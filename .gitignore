@@ -2,4 +2,6 @@
 
 *gptree*
 
-/data
+/core/data
+
+*.csv

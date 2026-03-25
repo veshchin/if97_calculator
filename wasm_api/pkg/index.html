@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>IF97 WASM Test</title>
+</head>
+<body>
+<h1>Расчет свойств воды (Rust + WASM)</h1>
+<script type="module">
+    // Импортируем инициализатор WASM и нашу функцию расчета
+    import init, { calculate_pt_js } from './if97_wasm.js';
+
+    async function run() {
+        // Инициализируем WebAssembly модуль
+        await init();
+
+        // Давление 3 МПа, Температура 300 К
+        const p = 3.0;
+        const t = 300.0;
+
+        try {
+            // Вызываем Rust-код прямо из JS!
+            const state = calculate_pt_js(p, t);
+
+            console.log("Регион:", state.region);
+            console.log("Энтальпия:", state.h);
+            console.log("Энтропия:", state.s);
+
+            document.body.innerHTML += `<p>Расчет успешен! Посмотри в консоль разработчика (F12).</p>
+                                            <p>Энтальпия: <b>${state.h.toFixed(2)}</b> кДж/кг</p>`;
+        } catch (err) {
+            console.error("Ошибка расчета:", err);
+        }
+    }
+
+    run();
+</script>
+</body>
+</html>
