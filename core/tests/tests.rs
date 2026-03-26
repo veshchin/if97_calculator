@@ -20,12 +20,22 @@ mod tests {
 
     #[test]
     fn test_determine_region() {
+        // Базовые проверки из стандарта
         assert_eq!(determine_region(3.0, 300.0), Region::Region1);
         assert_eq!(determine_region(0.0035, 300.0), Region::Region2);
         assert_eq!(determine_region(40.0, 700.0), Region::Region3);
         assert_eq!(determine_region(30.0, 700.0), Region::Region2);
         assert_eq!(determine_region(30.0, 1500.0), Region::Region5);
         assert_eq!(determine_region(3.0, 2500.0), Region::OutOfBounds);
+
+        // Проверка околокритической зоны на линии насыщения (Region 4)
+        // Ранее эти точки ошибочно проваливались в Region 3
+        assert_eq!(determine_region(16.74371590007485, 624.2019591836735), Region::Region4);
+        assert_eq!(determine_region(18.372134407844708, 631.8333061224489), Region::Region4);
+        assert_eq!(determine_region(20.136572088037845, 639.4646530612245), Region::Region4);
+
+        // Точка критических параметров
+        assert_eq!(determine_region(22.06399999995171, 647.096), Region::Region4);
     }
 
     #[test]

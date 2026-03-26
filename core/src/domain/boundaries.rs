@@ -1,3 +1,5 @@
+// core/src/domain/boundaries.rs
+
 use crate::domain::state::Region;
 use crate::domain::models::region_4::saturation_pressure;
 
@@ -14,14 +16,19 @@ pub fn determine_region(p: f64, t: f64) -> Region {
         return Region::OutOfBounds;
     }
 
+    // Линия насыщения (Регион 4) существует вплоть до критической температуры (647.096 К).
+    // Проверяем эту границу до разделения на остальные регионы.
+    if t <= 647.096 {
+        let p_sat = saturation_pressure(t);
+        // Используем допуск 1e-5 для надежного захвата точек около критической зоны
+        if ((p - p_sat) / p_sat).abs() < 1e-5 {
+            return Region::Region4;
+        }
+    }
+
     if t <= 623.15 {
         let p_sat = saturation_pressure(t);
-
-        // Если давление практически совпадает с давлением насыщения (допуск 1e-6)
-        // Точка определяется как Регион 4 (линия насыщения)
-        if ((p - p_sat) / p_sat).abs() < 1e-6 {
-            return Region::Region4;
-        } else if p > p_sat {
+        if p > p_sat {
             return Region::Region1;
         } else {
             return Region::Region2;

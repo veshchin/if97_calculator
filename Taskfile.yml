@@ -20,6 +20,10 @@ tasks:
     cmds:
       - cargo test --workspace -- --nocapture
 
+  tree:
+    cmds:
+      - gptree -dsm
+
   # --- ДЕСКТОП ---
   build:desktop-win:
     desc: Кросс-компиляция десктопного приложения под Windows (x64)

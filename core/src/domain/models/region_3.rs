@@ -305,6 +305,35 @@ impl Region3 {
 
         Ok(WaterState { p, t, v, rho, h, s, cp, w, region: Region::Region3 })
     }
+    /// Прямой расчет всех параметров из плотности (rho) и температуры (T)
+    pub fn calculate_rhot(&self, rho: f64, t: f64) -> Result<WaterState, &'static str> {
+        let v = 1.0 / rho;
+        let delta = rho / RHO_C;
+        let tau = T_C / t;
+
+        let phi = self.phi(delta, tau);
+        let phi_delta = self.phi_delta(delta, tau);
+        let phi_tau = self.phi_tau(delta, tau);
+        let phi_tau_tau = self.phi_tau_tau(delta, tau);
+        let phi_delta_tau = self.phi_delta_tau(delta, tau);
+        let phi_delta_delta = self.phi_delta_delta(delta, tau);
+
+        let r_t = R * t;
+
+        // Давление считается прямым образом из уравнения состояния
+        let p = rho * r_t * delta * phi_delta / 1000.0;
+        let h = r_t * (tau * phi_tau + delta * phi_delta);
+        let s = R * (tau * phi_tau - phi);
+
+        let dp_drho_term = 2.0 * delta * phi_delta + delta.powi(2) * phi_delta_delta;
+        let dp_dt_term = delta * phi_delta - delta * tau * phi_delta_tau;
+        let cp = R * (-tau.powi(2) * phi_tau_tau + dp_dt_term.powi(2) / dp_drho_term);
+
+        let w_squared = r_t * 1000.0 * (dp_drho_term - dp_dt_term.powi(2) / (tau.powi(2) * phi_tau_tau));
+        let w = if w_squared > 0.0 { w_squared.sqrt() } else { f64::NAN };
+
+        Ok(WaterState { p, t, v, rho, h, s, cp, w, region: Region::Region3 })
+    }
 }
 
 impl WaterRegionModel for Region3 {
