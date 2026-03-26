@@ -1,5 +1,7 @@
+use serde::{Serialize, Deserialize}; // Добавь импорт
+
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Region {
     #[default]
     OutOfBounds,
@@ -7,7 +9,7 @@ pub enum Region {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct WaterState {
     pub p: f64, pub t: f64, pub v: f64, pub rho: f64,
     pub h: f64, pub s: f64, pub cp: f64, pub w: f64, pub region: Region,

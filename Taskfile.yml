@@ -43,7 +43,7 @@ tasks:
   # --- WebAssembly ---
   build:wasm:
     desc: Сборка WASM пакета для фронтенда
-    dir: wasm_api
+    dir: web_wasm
     cmds:
       - wasm-pack build --target web
     sources:
@@ -68,4 +68,4 @@ tasks:
     desc: Полная очистка всех артефактов сборки
     cmds:
       - cargo clean
-      - rm -rf wasm_api/pkg
+      - rm -rf web_wasm/pkg

@@ -4,7 +4,8 @@ members = [
     "core",
     "grpc_server",
     "desktop_fltk",
-    "wasm_api"
+    "web_wasm",
+    "web_wasm/src-tauri"
 ]
 
 # Оптимизации для всех релизных сборок

@@ -8,7 +8,8 @@
       <sourceFolder url="file://$MODULE_DIR$/desktop_fltk/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/core/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/grpc_server/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/wasm_api/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/web_wasm/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/web_wasm/src-tauri/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />

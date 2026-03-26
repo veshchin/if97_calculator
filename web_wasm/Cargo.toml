@@ -1,0 +1,15 @@
+[package]
+name = "web_wasm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+yew = { version = "0.21", features = ["csr"] }
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+    "HtmlInputElement", "HtmlTextAreaElement", "EventTarget",
+    "HtmlCanvasElement", "Window", "WheelEvent", "MouseEvent"
+] }
+plotters = "0.3"
+plotters-canvas = "0.3"
+if97_core = { path = "../core" }
