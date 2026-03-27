@@ -4,7 +4,7 @@ use crate::domain::state::{Region, WaterState};
 use crate::domain::traits::WaterRegionModel;
 use crate::domain::math::HelmholtzRegion;
 use crate::domain::errors::If97Error;
-use crate::domain::constants::{R, T_C, RHO_C};
+use crate::domain::constants::*;
 use crate::domain::tables::REGION3;
 use tracing::{instrument, trace, debug, warn, error};
 
@@ -55,7 +55,6 @@ impl Region3 {
         powers
     }
 
-    // ИСПРАВЛЕНИЕ: Бронебойный метод Ньютона-Рафсона с защитой фаз
     #[instrument(level = "trace", skip(self))]
     fn calculate_density(&self, p: f64, t: f64, mut rho_guess: f64) -> f64 {
         let tau = T_C / t;
@@ -64,14 +63,14 @@ impl Region3 {
 
         debug!(p, t, rho_guess, is_liquid, "Старт 1D решателя плотности (Region 3)");
 
-        for iter in 0..100 {
+        for iter in 0..SOLVER_MAX_ITER_DENSITY {
             let pd = self.phi_delta(delta, tau);
             let p_calc = rho_guess * R * t * delta * pd / 1000.0;
             let error = p_calc - p;
 
             trace!(iter, rho_guess, p_calc, error, "Итерация 1D решателя");
 
-            if error.abs() < 1e-8 {
+            if error.abs() < SOLVER_TOLERANCE_TIGHT {
                 debug!(iter, rho_final = rho_guess, "Сходимость 1D решателя достигнута");
                 break;
             }
@@ -137,7 +136,7 @@ impl Region3 {
 
             trace!(fallback_idx, rho, t, "Попытка решения с текущим начальным приближением");
 
-            for iter in 0..50 {
+            for iter in 0..SOLVER_MAX_ITER_2D {
                 let delta = rho / RHO_C;
                 let tau = T_C / t;
                 let phi_d = self.phi_delta(delta, tau);
@@ -153,7 +152,7 @@ impl Region3 {
 
                 trace!(iter, p_curr, h_curr, f1, f2, "Итерация 2D решателя (p, h)");
 
-                if f1.abs() < 1e-7 && f2.abs() < 1e-7 {
+                if f1.abs() < SOLVER_TOLERANCE && f2.abs() < SOLVER_TOLERANCE {
                     debug!(iter, rho, t, "Сходимость 2D решателя (p, h) достигнута");
                     success = true;
                     break;
@@ -166,7 +165,7 @@ impl Region3 {
 
                 let det = dp_drho * dh_dt - dp_dt * dh_drho;
 
-                if det.abs() < 1e-12 {
+                if det.abs() < SOLVER_DET_TOLERANCE {
                     warn!(iter, det, "Определитель матрицы Якоби близок к нулю");
                     break;
                 }
@@ -225,7 +224,7 @@ impl Region3 {
 
             trace!(fallback_idx, rho, t, "Попытка решения с текущим начальным приближением");
 
-            for iter in 0..50 {
+            for iter in 0..SOLVER_MAX_ITER_2D {
                 let delta = rho / RHO_C;
                 let tau = T_C / t;
                 let phi = self.phi(delta, tau);
@@ -242,7 +241,7 @@ impl Region3 {
 
                 trace!(iter, p_curr, s_curr, f1, f2, "Итерация 2D решателя (p, s)");
 
-                if f1.abs() < 1e-7 && f2.abs() < 1e-7 {
+                if f1.abs() < SOLVER_TOLERANCE && f2.abs() < SOLVER_TOLERANCE {
                     debug!(iter, rho, t, "Сходимость 2D решателя (p, s) достигнута");
                     success = true;
                     break;
@@ -255,7 +254,7 @@ impl Region3 {
 
                 let det = dp_drho * ds_dt - dp_dt * ds_drho;
 
-                if det.abs() < 1e-12 {
+                if det.abs() < SOLVER_DET_TOLERANCE {
                     warn!(iter, det, "Определитель матрицы Якоби близок к нулю");
                     break;
                 }
@@ -283,7 +282,6 @@ impl Region3 {
         Err(If97Error::ConvergenceError("Превышен лимит итераций в решателе Region 3 (p, s).".into()))
     }
 
-    // ИСПРАВЛЕНИЕ 2: Публичный метод, позволяющий передать начальную плотность
     #[instrument(level = "debug", skip(self))]
     pub fn calculate_pt_with_guess(&self, p: f64, t: f64, rho_guess: f64) -> Result<WaterState, If97Error> {
         let rho = self.calculate_density(p, t, rho_guess);
@@ -310,10 +308,19 @@ impl Region3 {
         let w = if w_squared > 0.0 { w_squared.sqrt() } else { f64::NAN };
 
         debug!(v, rho, h, s, cp, w, "Успешный прямой расчет свойств Region3 (p, t)");
-        Ok(WaterState { p, t, v, rho, h, s, cp, w, region: Region::Region3 })
+        Ok(WaterState {
+            p: p.into(),
+            t: t.into(),
+            v: v.into(),
+            rho: rho.into(),
+            h: h.into(),
+            s: s.into(),
+            cp: cp.into(),
+            w: w.into(),
+            region: Region::Region3
+        })
     }
 
-    /// Прямой расчет всех параметров из плотности (rho) и температуры (T)
     #[instrument(level = "debug", skip(self))]
     pub fn calculate_rhot(&self, rho: f64, t: f64) -> Result<WaterState, If97Error> {
         let v = 1.0 / rho;
@@ -328,7 +335,6 @@ impl Region3 {
         let phi_delta_delta = self.phi_delta_delta(delta, tau);
 
         let r_t = R * t;
-        // Давление считается прямым образом из уравнения состояния
         let p = rho * r_t * delta * phi_delta / 1000.0;
         let h = r_t * (tau * phi_tau + delta * phi_delta);
         let s = R * (tau * phi_tau - phi);
@@ -341,7 +347,17 @@ impl Region3 {
         let w = if w_squared > 0.0 { w_squared.sqrt() } else { f64::NAN };
 
         debug!(p, v, h, s, cp, w, "Успешный прямой расчет свойств Region3 (rho, t)");
-        Ok(WaterState { p, t, v, rho, h, s, cp, w, region: Region::Region3 })
+        Ok(WaterState {
+            p: p.into(),
+            t: t.into(),
+            v: v.into(),
+            rho: rho.into(),
+            h: h.into(),
+            s: s.into(),
+            cp: cp.into(),
+            w: w.into(),
+            region: Region::Region3
+        })
     }
 }
 
@@ -419,20 +435,15 @@ impl HelmholtzRegion for Region3 {
 impl WaterRegionModel for Region3 {
     #[instrument(level = "debug", skip(self))]
     fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, If97Error> {
-        // Пробуем найти корень со стороны жидкости
         debug!("Инициация расчета (p, t), начальное приближение со стороны жидкости (rho=500.0)");
         let mut rho = self.calculate_density(p, t, 500.0);
 
-        // Проверяем, не уперся ли решатель в фазовый барьер.
-        // Если уперся, рассчитанное давление будет сильно отличаться от целевого.
         let delta = rho / RHO_C;
         let tau = T_C / t;
         let p_calc = rho * R * t * delta * self.phi_delta(delta, tau) / 1000.0;
 
         if (p_calc - p).abs() > 1e-4 {
-            // Ошибка велика! Значит, мы искали пар, а застряли в жидкости.
             warn!(p_calc, p_target = p, "Ошибка велика. Вероятно, застряли в жидкости. Смена начального приближения на пар (rho=150.0)");
-            // Пробуем со стороны пара (rho < 322.0)
             rho = self.calculate_density(p, t, 150.0);
         }
 

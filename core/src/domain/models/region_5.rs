@@ -4,16 +4,13 @@ use crate::domain::state::{Region, WaterState};
 use crate::domain::traits::WaterRegionModel;
 use crate::domain::math::GibbsRegion;
 use crate::domain::errors::If97Error;
-use crate::domain::constants::R;
+use crate::domain::constants::*;
 use crate::domain::tables::{REGION5, REGION5_CP0};
 use tracing::{instrument, trace, debug, error};
 
 pub struct Region5;
 
 impl Region5 {
-    const P_STAR: f64 = 1.0;
-    const T_STAR: f64 = 1000.0;
-
     #[inline(always)]
     #[instrument(level = "trace")]
     fn precompute_pi_powers(pi: f64) -> [f64; 60] {
@@ -33,12 +30,12 @@ impl Region5 {
     // --- 1D решатели для обратных расчетов ---
     #[instrument(level = "debug", skip(self))]
     fn calc_t_ph(&self, p: f64, h_target: f64) -> Result<f64, If97Error> {
-        let pi = p / Self::P_STAR;
+        let pi = p / REGION5_P_STAR;
         let mut t = 1500.0;
         debug!(p, h_target, "Старт 1D решателя Region 5 (p, h)");
 
-        for iter in 0..20 {
-            let tau = Self::T_STAR / t;
+        for iter in 0..SOLVER_MAX_ITER_1D {
+            let tau = REGION5_T_STAR / t;
             let gamma_tau = self.gamma_tau(pi, tau);
             let gamma_tau_tau = self.gamma_tau_tau(pi, tau);
 
@@ -49,11 +46,11 @@ impl Region5 {
 
             trace!(iter, t, h_curr, f, cp_curr, "Итерация решателя (p, h)");
 
-            if f.abs() < 1e-7 {
+            if f.abs() < SOLVER_TOLERANCE {
                 debug!(iter, t, "Сходимость решателя (p, h) достигнута");
                 return Ok(t);
             }
-            t = (t - f / cp_curr).clamp(1073.15, 2273.15);
+            t = (t - f / cp_curr).clamp(T_MAX_REGION1_2, T_MAX_REGION5);
         }
         error!("Превышен лимит итераций в решателе Region 5 (p, h).");
         Err(If97Error::ConvergenceError("Превышен лимит итераций в решателе Region 5 (p, h).".into()))
@@ -61,12 +58,12 @@ impl Region5 {
 
     #[instrument(level = "debug", skip(self))]
     fn calc_t_ps(&self, p: f64, s_target: f64) -> Result<f64, If97Error> {
-        let pi = p / Self::P_STAR;
+        let pi = p / REGION5_P_STAR;
         let mut t = 1500.0;
         debug!(p, s_target, "Старт 1D решателя Region 5 (p, s)");
 
-        for iter in 0..20 {
-            let tau = Self::T_STAR / t;
+        for iter in 0..SOLVER_MAX_ITER_1D {
+            let tau = REGION5_T_STAR / t;
             let gamma = self.gamma(pi, tau);
             let gamma_tau = self.gamma_tau(pi, tau);
             let gamma_tau_tau = self.gamma_tau_tau(pi, tau);
@@ -79,11 +76,11 @@ impl Region5 {
 
             trace!(iter, t, s_curr, f, ds_dt, "Итерация решателя (p, s)");
 
-            if f.abs() < 1e-7 {
+            if f.abs() < SOLVER_TOLERANCE {
                 debug!(iter, t, "Сходимость решателя (p, s) достигнута");
                 return Ok(t);
             }
-            t = (t - f / ds_dt).clamp(1073.15, 2273.15);
+            t = (t - f / ds_dt).clamp(T_MAX_REGION1_2, T_MAX_REGION5);
         }
         error!("Превышен лимит итераций в решателе Region 5 (p, s).");
         Err(If97Error::ConvergenceError("Превышен лимит итераций в решателе Region 5 (p, s).".into()))
@@ -181,8 +178,8 @@ impl GibbsRegion for Region5 {
 impl WaterRegionModel for Region5 {
     #[instrument(level = "debug", skip(self))]
     fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, If97Error> {
-        let pi = p / Self::P_STAR;
-        let tau = Self::T_STAR / t;
+        let pi = p / REGION5_P_STAR;
+        let tau = REGION5_T_STAR / t;
         trace!(pi, tau, "Приведенные параметры");
 
         let gamma = self.gamma(pi, tau);
@@ -202,13 +199,23 @@ impl WaterRegionModel for Region5 {
         let w = if w_squared > 0.0 { (w_squared * 1000.0).sqrt() } else { f64::NAN };
 
         debug!(v, h, s, cp, w, "Успешный прямой расчет свойств Region5 (p, t)");
-        Ok(WaterState { p, t, v, rho: 1.0 / v, h, s, cp, w, region: Region::Region5 })
+        Ok(WaterState {
+            p: p.into(),
+            t: t.into(),
+            v: v.into(),
+            rho: (1.0 / v).into(),
+            h: h.into(),
+            s: s.into(),
+            cp: cp.into(),
+            w: w.into(),
+            region: Region::Region5
+        })
     }
 
     #[instrument(level = "debug", skip(self))]
     fn calculate_ph(&self, p: f64, h: f64) -> Result<WaterState, If97Error> {
         let t = self.calc_t_ph(p, h)?;
-        if t < 1073.15 || t > 2273.15 || p < 0.0 || p > 50.0 {
+        if t < T_MAX_REGION1_2 || t > T_MAX_REGION5 || p < 0.0 || p > P_MAX_REGION5 {
             error!(t, p, "Вычисленные параметры (p, t) вне границ Региона 5");
             return Err(If97Error::OutOfBounds("Точка (p, h) лежит вне границ Региона 5".into()));
         }
@@ -219,7 +226,7 @@ impl WaterRegionModel for Region5 {
     #[instrument(level = "debug", skip(self))]
     fn calculate_ps(&self, p: f64, s: f64) -> Result<WaterState, If97Error> {
         let t = self.calc_t_ps(p, s)?;
-        if t < 1073.15 || t > 2273.15 || p < 0.0 || p > 50.0 {
+        if t < T_MAX_REGION1_2 || t > T_MAX_REGION5 || p < 0.0 || p > P_MAX_REGION5 {
             error!(t, p, "Вычисленные параметры (p, t) вне границ Региона 5");
             return Err(If97Error::OutOfBounds("Точка (p, s) лежит вне границ Региона 5".into()));
         }

@@ -1,6 +1,6 @@
 // File: src/domain/models/region_2_meta.rs
 
-use crate::domain::constants::R;
+use crate::domain::constants::*;
 use crate::domain::state::{Region, WaterState};
 use crate::domain::traits::WaterRegionModel;
 use crate::domain::math::GibbsRegion;
@@ -11,8 +11,6 @@ use tracing::{instrument, trace, debug};
 pub struct Region2Meta;
 
 impl Region2Meta {
-    const P_STAR: f64 = 1.0;
-    const T_STAR: f64 = 540.0;
     const N1_0: f64 = -0.96937268393049e1;
     const N2_0: f64 = 0.10087275970006e2;
 
@@ -143,8 +141,8 @@ impl GibbsRegion for Region2Meta {
 impl WaterRegionModel for Region2Meta {
     #[instrument(level = "debug", skip(self))]
     fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, If97Error> {
-        let pi = p / Self::P_STAR;
-        let tau = Self::T_STAR / t;
+        let pi = p / REGION2_P_STAR;
+        let tau = REGION2_T_STAR / t;
         trace!(pi, tau, "Приведенные параметры");
 
         let gamma = self.gamma(pi, tau);
@@ -164,6 +162,16 @@ impl WaterRegionModel for Region2Meta {
         let w = if w_squared > 0.0 { (w_squared * 1000.0).sqrt() } else { f64::NAN };
 
         debug!(v, h, s, cp, w, "Успешный прямой расчет свойств Region2Meta (p, t)");
-        Ok(WaterState { p, t, v, rho: 1.0 / v, h, s, cp, w, region: Region::Region2 })
+        Ok(WaterState {
+            p: p.into(),
+            t: t.into(),
+            v: v.into(),
+            rho: (1.0 / v).into(),
+            h: h.into(),
+            s: s.into(),
+            cp: cp.into(),
+            w: w.into(),
+            region: Region::Region2
+        })
     }
 }

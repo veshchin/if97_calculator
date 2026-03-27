@@ -4,16 +4,13 @@ use crate::domain::state::{Region, WaterState};
 use crate::domain::traits::WaterRegionModel;
 use crate::domain::math::GibbsRegion;
 use crate::domain::errors::If97Error;
-use crate::domain::constants::R;
+use crate::domain::constants::*;
 use crate::domain::tables::{REGION1, BACKWARD1_T_PH, BACKWARD1_T_PS};
 use tracing::{instrument, trace, debug, error};
 
 pub struct Region1;
 
 impl Region1 {
-    const P_STAR: f64 = 16.53;
-    const T_STAR: f64 = 1386.0;
-
     #[inline(always)]
     #[instrument(level = "trace")]
     fn precompute_pi_powers(pi_term: f64) -> [f64; 35] {
@@ -144,8 +141,8 @@ impl GibbsRegion for Region1 {
 impl WaterRegionModel for Region1 {
     #[instrument(level = "debug", skip(self))]
     fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, If97Error> {
-        let pi = p / Self::P_STAR;
-        let tau = Self::T_STAR / t;
+        let pi = p / REGION1_P_STAR;
+        let tau = REGION1_T_STAR / t;
         trace!(pi, tau, "Приведенные параметры");
 
         let gamma = self.gamma(pi, tau);
@@ -165,13 +162,23 @@ impl WaterRegionModel for Region1 {
         let w = if w_squared > 0.0 { (w_squared * 1000.0).sqrt() } else { f64::NAN };
 
         debug!(v, h, s, cp, w, "Успешный прямой расчет свойств Region1 (p, t)");
-        Ok(WaterState { p, t, v, rho: 1.0 / v, h, s, cp, w, region: Region::Region1 })
+        Ok(WaterState {
+            p: p.into(),
+            t: t.into(),
+            v: v.into(),
+            rho: (1.0 / v).into(),
+            h: h.into(),
+            s: s.into(),
+            cp: cp.into(),
+            w: w.into(),
+            region: Region::Region1
+        })
     }
 
     #[instrument(level = "debug", skip(self))]
     fn calculate_ph(&self, p: f64, h: f64) -> Result<WaterState, If97Error> {
         let t = Self::calc_t_ph(p, h);
-        if t < 273.15 || t > 623.15 || p > 100.0 {
+        if t < T_MIN_IF97 || t > 623.15 || p > P_MAX_IF97 {
             error!(t, "Вычисленная температура {}K вне границ Региона 1", t);
             return Err(If97Error::OutOfBounds("Точка (p, h) лежит вне границ Региона 1".into()));
         }
@@ -182,7 +189,7 @@ impl WaterRegionModel for Region1 {
     #[instrument(level = "debug", skip(self))]
     fn calculate_ps(&self, p: f64, s: f64) -> Result<WaterState, If97Error> {
         let t = Self::calc_t_ps(p, s);
-        if t < 273.15 || t > 623.15 || p > 100.0 {
+        if t < T_MIN_IF97 || t > 623.15 || p > P_MAX_IF97 {
             error!(t, "Вычисленная температура {}K вне границ Региона 1", t);
             return Err(If97Error::OutOfBounds("Точка (p, s) лежит вне границ Региона 1".into()));
         }

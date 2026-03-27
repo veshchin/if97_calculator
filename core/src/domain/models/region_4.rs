@@ -3,9 +3,10 @@
 use crate::domain::state::{Region, WaterState};
 use crate::domain::models::region_1::Region1;
 use crate::domain::models::region_2::Region2;
-use crate::domain::models::region_3::Region3; // Импортируем Region3
+use crate::domain::models::region_3::Region3;
 use crate::domain::traits::WaterRegionModel;
 use crate::domain::errors::If97Error;
+use crate::domain::constants::*;
 use tracing::{instrument, trace, debug, error};
 
 const N: [f64; 10] = [
@@ -29,7 +30,7 @@ pub fn saturation_pressure(t: f64) -> f64 {
 
 #[instrument(level = "trace")]
 pub fn saturation_temperature(p: f64) -> f64 {
-    if p < 0.000611212 || p > 22.064001 {
+    if p < P_MIN_IF97 || p > P_C + 1e-3 {
         error!(p, "Давление вне диапазона линии насыщения (0.000611 - 22.064 МПа)");
         return f64::NAN;
     }
@@ -61,11 +62,10 @@ pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, If97Error> {
         trace!("Расчет граничных состояний (жидкость/пар) через Region1 и Region2");
         (Region1.calculate_pt(p, t_sat)?, Region2.calculate_pt(p, t_sat)?)
     } else {
-        let dt = 647.096 - t_sat;
-        // Улучшенная аппроксимация (степенная функция 0.65) для нелинейной околокритической зоны
+        let dt = T_C - t_sat;
         let fraction = (dt / 23.946).max(0.0).powf(0.65);
-        let rho_guess_liq = 322.0 + 252.7 * fraction;
-        let rho_guess_vap = 322.0 - 248.8 * fraction;
+        let rho_guess_liq = RHO_C + 252.7 * fraction;
+        let rho_guess_vap = RHO_C - 248.8 * fraction;
         trace!(rho_guess_liq, rho_guess_vap, "Расчет граничных состояний через Region3 (околокритическая зона)");
         (
             Region3.calculate_pt_with_guess(p, t_sat, rho_guess_liq)?,
@@ -73,15 +73,20 @@ pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, If97Error> {
         )
     };
 
-    let v = state_liquid.v + x * (state_vapor.v - state_liquid.v);
-    let h = state_liquid.h + x * (state_vapor.h - state_liquid.h);
-    let s = state_liquid.s + x * (state_vapor.s - state_liquid.s);
+    let v = state_liquid.v.inner() + x * (state_vapor.v.inner() - state_liquid.v.inner());
+    let h = state_liquid.h.inner() + x * (state_vapor.h.inner() - state_liquid.h.inner());
+    let s = state_liquid.s.inner() + x * (state_vapor.s.inner() - state_liquid.s.inner());
 
     debug!(v, h, s, t_sat, "Успешный расчет двухфазной области Region4");
     Ok(WaterState {
-        p, t: t_sat, v,
-        rho: 1.0 / v, h, s,
-        cp: f64::NAN, w: f64::NAN,
+        p: p.into(),
+        t: t_sat.into(),
+        v: v.into(),
+        rho: (1.0 / v).into(),
+        h: h.into(),
+        s: s.into(),
+        cp: f64::NAN.into(),
+        w: f64::NAN.into(),
         region: Region::Region4
     })
 }

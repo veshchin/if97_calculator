@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fs::File;
 use serde::Deserialize;
 use if97_core::domain::calculator::If97;
+use if97_core::domain::units::*;
 
 mod tests;
 
@@ -54,32 +55,30 @@ fn test_core_against_python_csv() -> Result<(), Box<dyn Error>> {
     let mut passed = 0;
 
     for result in rdr.deserialize() {
-        // Игнорируем пустые или битые строки в конце файла
         let row: TestRow = match result {
             Ok(r) => r,
             Err(_) => continue,
         };
         let tolerance = if row.region == 4 && row.t > 623.15 { 1e-5 } else { 1e-6 };
 
-        // Тестируем систему целиком через новый фасад If97
         let calc_state = if row.region == 4 {
-            If97::px(row.p, row.x.unwrap_or(0.0))
+            If97::px(row.p.into(), row.x.unwrap_or(0.0).into())
         } else {
-            If97::pt(row.p, row.t)
+            If97::pt(row.p.into(), row.t.into())
         };
 
         assert!(calc_state.is_ok(), "Ошибка расчета для P={}, T={}", row.p, row.t);
         let state = calc_state.unwrap();
         let ctx = format!("Region {}, P: {}, T: {}", row.region, row.p, row.t);
 
-        assert_relative_eq!(state.v, row.v, tolerance, format!("{} -> Объем (v)", ctx));
-        assert_relative_eq!(state.h, row.h, tolerance, format!("{} -> Энтальпия (h)", ctx));
-        assert_relative_eq!(state.s, row.s, tolerance, format!("{} -> Энтропия (s)", ctx));
-        if row.cp.is_finite() && state.cp.is_finite() {
-            assert_relative_eq!(state.cp, row.cp, tolerance, format!("{} -> Теплоемкость (cp)", ctx));
+        assert_relative_eq!(state.v.inner(), row.v, tolerance, format!("{} -> Объем (v)", ctx));
+        assert_relative_eq!(state.h.inner(), row.h, tolerance, format!("{} -> Энтальпия (h)", ctx));
+        assert_relative_eq!(state.s.inner(), row.s, tolerance, format!("{} -> Энтропия (s)", ctx));
+        if row.cp.is_finite() && state.cp.inner().is_finite() {
+            assert_relative_eq!(state.cp.inner(), row.cp, tolerance, format!("{} -> Теплоемкость (cp)", ctx));
         }
-        if row.w.is_finite() && state.w.is_finite() {
-            assert_relative_eq!(state.w, row.w, tolerance, format!("{} -> Скорость звука (w)", ctx));
+        if row.w.is_finite() && state.w.inner().is_finite() {
+            assert_relative_eq!(state.w.inner(), row.w, tolerance, format!("{} -> Скорость звука (w)", ctx));
         }
 
         passed += 1;

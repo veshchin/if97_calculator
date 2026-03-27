@@ -1,4 +1,7 @@
-use serde::{Serialize, Deserialize}; // Добавь импорт
+// File: src/domain/state.rs
+
+use serde::{Serialize, Deserialize};
+use crate::domain::units::*;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -11,6 +14,13 @@ pub enum Region {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct WaterState {
-    pub p: f64, pub t: f64, pub v: f64, pub rho: f64,
-    pub h: f64, pub s: f64, pub cp: f64, pub w: f64, pub region: Region,
+    pub p: MegaPascal,
+    pub t: Kelvin,
+    pub v: CubicMeterPerKilogram,
+    pub rho: KilogramPerCubicMeter,
+    pub h: KiloJoulePerKilogram,
+    pub s: KiloJoulePerKilogramKelvin,
+    pub cp: KiloJoulePerKilogramKelvin,
+    pub w: MeterPerSecond,
+    pub region: Region,
 }
