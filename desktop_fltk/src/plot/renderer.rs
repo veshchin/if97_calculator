@@ -1,9 +1,12 @@
-// desktop_fltk/src/plot/renderer.rs
+// File: src/plot/renderer.rs
 
 use plotters::prelude::*;
 use crate::state::{AppState, PlotType};
-use if97_core::domain::calculator::Calculator;
+
+use if97_core::domain::calculator::If97;
 use if97_core::domain::state::WaterState;
+// Для удобного оборачивания значений
+use if97_core::domain::units::*;
 
 fn get_palette_color(idx: usize) -> RGBColor {
     let palette = [RED, BLUE, GREEN, MAGENTA, CYAN, BLACK];
@@ -37,13 +40,14 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
 
     let bright_purple = RGBColor(180, 0, 255);
 
+    // Распаковываем значения с помощью .inner()
     let get_coords = |s: &WaterState| -> (f64, f64) {
         let val = match current_plot {
-            PlotType::PT => s.p,
-            PlotType::RhoT => s.rho,
-            PlotType::VT => s.v,
+            PlotType::PT => s.p.inner(),
+            PlotType::RhoT => s.rho.inner(),
+            PlotType::VT => s.v.inner(),
         };
-        if swap_axes { (s.t, val) } else { (val, s.t) }
+        if swap_axes { (s.t.inner(), val) } else { (val, s.t.inner()) }
     };
 
     let mut sat_liq = Vec::new();
@@ -53,8 +57,9 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
         let mut p = 0.000611;
         let p_crit = 22.064;
         while p <= p_crit {
-            if let Ok(st) = Calculator::calculate_px(p, 0.0) { sat_liq.push(st); }
-            if let Ok(st) = Calculator::calculate_px(p, 1.0) { sat_vap.push(st); }
+            // Используем новый API и оборачиваем f64
+            if let Ok(st) = If97::px(p.into(), 0.0.into()) { sat_liq.push(st); }
+            if let Ok(st) = If97::px(p.into(), 1.0.into()) { sat_vap.push(st); }
 
             if p < 0.01 { p += 0.002; }
             else if p < 0.1 { p += 0.02; }
@@ -62,7 +67,7 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
             else if p < 10.0 { p += 1.0; }
             else { p += 2.0; }
         }
-        if let Ok(st) = Calculator::calculate_px(p_crit, 0.5) {
+        if let Ok(st) = If97::px(p_crit.into(), 0.5.into()) {
             sat_liq.push(st.clone());
             sat_vap.push(st);
         }
@@ -75,6 +80,7 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
 
     if autoscale {
         let mut valid_points = 0;
+
         for ds in state.datasets.iter() {
             if !ds.visible { continue; }
             for s in &ds.points {
@@ -154,12 +160,10 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
         let desc_t = "Температура (T), К";
 
         let (x_desc, y_desc) = if swap_axes { (desc_t, desc_val) } else { (desc_val, desc_t) };
-
         chart.configure_mesh().x_desc(x_desc).y_desc(y_desc).draw().ok();
 
         if show_dome {
             let sat_style = ShapeStyle::from(&bright_purple).stroke_width(2);
-
             if current_plot == PlotType::PT {
                 chart.draw_series(LineSeries::new(sat_liq.iter().map(|s| get_coords(s)), sat_style)).ok();
             } else {

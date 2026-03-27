@@ -19,7 +19,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut paths: Vec<_> = entries
             .filter_map(|e| e.ok())
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|ext| ext == "csv"))
+            .filter(|p| {
+                let is_csv = p.extension().is_some_and(|ext| ext == "csv");
+                let is_not_hidden = p.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name_str| !name_str.starts_with('.'))
+                    .unwrap_or(false);
+                is_csv && is_not_hidden
+            })
             .collect();
 
         // Сортируем пути для детерминированности сборки

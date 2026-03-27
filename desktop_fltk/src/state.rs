@@ -1,8 +1,9 @@
-// desktop_fltk/src/state.rs
+// File: src/state.rs
 
 use if97_core::domain::state::WaterState;
+use tracing::info;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum PlotType {
     PT,
     RhoT,
@@ -28,6 +29,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Self {
+        info!("Инициализация AppState с настройками по умолчанию");
         Self {
             datasets: vec![SavedData {
                 name: "Текущая таблица".to_string(),
@@ -44,7 +46,7 @@ impl AppState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Message {
     // Вкладка 1: Одиночный расчет
     CalculateSingle { mode: i32, val_a: f64, val_b: f64 },
@@ -64,4 +66,8 @@ pub enum Message {
     SelectData,
     UpdateDataVisibility(Vec<bool>),
     ExportPlot,
+
+    // Экспорт
+    SaveLogFile,
+    ExportBatchData,
 }

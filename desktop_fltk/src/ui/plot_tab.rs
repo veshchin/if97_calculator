@@ -1,9 +1,10 @@
-// desktop_fltk/src/ui/plot_tab.rs
+// File: src/ui/plot_tab.rs
 
 use fltk::{prelude::*, group::*, button::*, input::*, menu::*, frame::*, enums::*, image::RgbImage};
 use fltk::app::Sender;
 use crate::state::{Message, PlotType, AppState};
 use crate::plot::renderer::render_plot_to_buffer;
+use tracing::{info, debug};
 
 pub struct PlotTab {
     pub group: Group,
@@ -26,7 +27,6 @@ impl PlotTab {
         choice_plot_type.set_value(0);
 
         let mut btn_select_data = Button::new(210, 45, 140, 30, "Выбрать данные");
-
         let mut check_dome = CheckButton::new(360, 45, 180, 30, "Показывать купол");
         check_dome.set_value(true);
 
@@ -69,6 +69,7 @@ impl PlotTab {
                     1 => { ivm.set_label("rho, кг/м3 от:"); PlotType::RhoT },
                     _ => { ivm.set_label("v, м3/кг от:"); PlotType::VT },
                 };
+                info!("Смена типа графика на {:?}", pt);
                 s.send(Message::ChangePlotType(pt));
             }
         });
@@ -83,6 +84,7 @@ impl PlotTab {
             let mut btn_apply = btn_apply_limits.clone();
             move |c| {
                 let auto = c.value();
+                debug!("Автомасштаб установлен в {}", auto);
                 if auto {
                     iv_min.deactivate(); iv_max.deactivate(); it_min.deactivate(); it_max.deactivate(); btn_apply.deactivate();
                 } else {
@@ -101,12 +103,13 @@ impl PlotTab {
                 let vmax = ivx.value().replace(',', ".").parse().unwrap_or(100.0);
                 let tmin = itm.value().replace(',', ".").parse().unwrap_or(273.15);
                 let tmax = itx.value().replace(',', ".").parse().unwrap_or(1000.0);
+                info!("Применение ручного масштаба: [{}-{}] и [{}-{}]", vmin, vmax, tmin, tmax);
                 s.send(Message::ApplyPlotLimits(vmin, vmax, tmin, tmax));
             }
         });
 
         btn_select_data.set_callback({ let s = sender.clone(); move |_| s.send(Message::SelectData) });
-        btn_export_plot.set_callback(move |_| sender.send(Message::ExportPlot));
+        btn_export_plot.set_callback({ let s = sender.clone(); move |_| s.send(Message::ExportPlot) });
 
         Self { group, choice_plot_type, plot_frame, inp_val_min, inp_val_max, inp_t_min, inp_t_max, btn_apply_limits }
     }
@@ -116,10 +119,8 @@ impl PlotTab {
         let fh = self.plot_frame.h();
         if fw <= 0 || fh <= 0 { return; }
 
-        // Получаем пиксели из Plotters
+        debug!("Перерисовка графика: {}x{}", fw, fh);
         let buffer = render_plot_to_buffer(state, fw as u32, fh as u32);
-
-        // Превращаем пиксели в FLTK-изображение и отдаём фрейму
         if let Ok(img) = RgbImage::new(&buffer, fw, fh, ColorDepth::Rgb8) {
             self.plot_frame.set_image(Some(img));
             self.plot_frame.redraw();

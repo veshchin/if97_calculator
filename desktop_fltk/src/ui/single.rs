@@ -1,8 +1,9 @@
-// desktop_fltk/src/ui/single.rs
+// File: src/ui/single.rs
 
 use fltk::{prelude::*, group::*, button::*, input::*, menu::*, frame::*, enums::*};
 use fltk::app::Sender;
 use crate::state::Message;
+use tracing::{info, debug};
 
 pub struct SingleTab {
     pub group: Group,
@@ -26,7 +27,7 @@ impl SingleTab {
 
         let mut choice_mode = Choice::default().with_label("Что известно:");
         choice_mode.set_align(Align::TopLeft);
-        choice_mode.add_choice("Давление и Температура (p, T)|Давление и Плотность (p, rho)|Давление и Энтальпия (p, h)|Давление и Энтропия (p, s)|Линия насыщения (p, x)");
+        choice_mode.add_choice("Давление и Температура (p, T)|Плотность и Температура (rho, T)|Давление и Энтальпия (p, h)|Давление и Энтропия (p, s)|Линия насыщения (p, x)");
         choice_mode.set_value(0);
 
         let mut input_a = Input::default().with_label("Давление (p), МПа:");
@@ -51,14 +52,16 @@ impl SingleTab {
         flex_single.end();
         group.end();
 
-        // --- Коллбеки (отправка сообщений) ---
+        // --- Коллбеки ---
         choice_mode.set_callback({
             let mut ia = input_a.clone();
             let mut ib = input_b.clone();
             move |c| {
-                match c.value() {
+                let val = c.value();
+                debug!("Смена режима одиночного расчета на индекс {}", val);
+                match val {
                     0 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Температура (T), К:"); }
-                    1 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Плотность (rho), кг/м3:"); }
+                    1 => { ia.set_label("Плотность (rho), кг/м3:"); ib.set_label("Температура (T), К:"); }
                     2 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Энтальпия (h), кДж/кг:"); }
                     3 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Энтропия (s), кДж/(кг*К):"); }
                     4 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Степень сухости (x), 0.0-1.0:"); }
@@ -76,11 +79,18 @@ impl SingleTab {
             move |_| {
                 let val_a = i_a.value().replace(',', ".").parse::<f64>().unwrap_or(f64::NAN);
                 let val_b = i_b.value().replace(',', ".").parse::<f64>().unwrap_or(f64::NAN);
+                debug!("Клик 'Рассчитать': mode={}, a={}, b={}", cm.value(), val_a, val_b);
                 s.send(Message::CalculateSingle { mode: cm.value(), val_a, val_b });
             }
         });
 
-        btn_save_single.set_callback(move |_| sender.send(Message::SaveSinglePoint));
+        btn_save_single.set_callback({
+            let s = sender.clone();
+            move |_| {
+                info!("Клик 'Сохранить точку'");
+                s.send(Message::SaveSinglePoint);
+            }
+        });
 
         Self { group, choice_mode, input_a, input_b, res_frame }
     }
