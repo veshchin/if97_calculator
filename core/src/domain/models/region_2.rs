@@ -2,6 +2,8 @@
 
 use crate::domain::state::{Region, WaterState};
 use crate::domain::traits::WaterRegionModel;
+use crate::domain::math::GibbsRegion;
+use crate::domain::errors::If97Error;
 use crate::domain::constants::R;
 use crate::domain::boundaries::{Region2Subregion, determine_region2_subregion_ph, determine_region2_subregion_ps};
 use crate::domain::tables::{
@@ -33,7 +35,73 @@ impl Region2 {
         powers
     }
 
-    // --- Математика (Гамма-функции) ---
+    // --- Обратные формулы ---
+    #[instrument(level = "trace")]
+    fn calc_t_ph(p: f64, h: f64) -> f64 {
+        let t = match determine_region2_subregion_ph(p, h) {
+            Region2Subregion::Region2a => {
+                let mut t_val = 0.0;
+                for &(n, i, j) in BACKWARD2A_T_PH.iter() {
+                    t_val += n * p.powi(i) * ((h / 2000.0) - 2.1).powi(j);
+                }
+                trace!("Использовано уравнение субрегиона 2a");
+                t_val
+            },
+            Region2Subregion::Region2b => {
+                let mut t_val = 0.0;
+                for &(n, i, j) in BACKWARD2B_T_PH.iter() {
+                    t_val += n * (p - 2.0).powi(i) * ((h / 2000.0) - 2.6).powi(j);
+                }
+                trace!("Использовано уравнение субрегиона 2b");
+                t_val
+            },
+            Region2Subregion::Region2c => {
+                let mut t_val = 0.0;
+                for &(n, i, j) in BACKWARD2C_T_PH.iter() {
+                    t_val += n * (p + 25.0).powi(i) * ((h / 2000.0) - 1.8).powi(j);
+                }
+                trace!("Использовано уравнение субрегиона 2c");
+                t_val
+            },
+        };
+        trace!(t, "Вычислена температура по обратному уравнению (p, h) для Region2");
+        t
+    }
+
+    #[instrument(level = "trace")]
+    fn calc_t_ps(p: f64, s: f64) -> f64 {
+        let t = match determine_region2_subregion_ps(p, s) {
+            Region2Subregion::Region2a => {
+                let mut t_val = 0.0;
+                for &(n, i, j) in BACKWARD2A_T_PS.iter() {
+                    t_val += n * p.powf(i as f64) * ((s / 2.0) - 2.0).powi(j);
+                }
+                trace!("Использовано уравнение субрегиона 2a");
+                t_val
+            },
+            Region2Subregion::Region2b => {
+                let mut t_val = 0.0;
+                for &(n, i, j) in BACKWARD2B_T_PS.iter() {
+                    t_val += n * p.powi(i) * (10.0 - (s / 0.7853)).powi(j);
+                }
+                trace!("Использовано уравнение субрегиона 2b");
+                t_val
+            },
+            Region2Subregion::Region2c => {
+                let mut t_val = 0.0;
+                for &(n, i, j) in BACKWARD2C_T_PS.iter() {
+                    t_val += n * p.powi(i) * (2.0 - (s / 2.9251)).powi(j);
+                }
+                trace!("Использовано уравнение субрегиона 2c");
+                t_val
+            },
+        };
+        trace!(t, "Вычислена температура по обратному уравнению (p, s) для Region2");
+        t
+    }
+}
+
+impl GibbsRegion for Region2 {
     #[instrument(level = "trace", skip(self))]
     fn gamma(&self, pi: f64, tau: f64) -> f64 {
         let mut gamma_o = pi.ln();
@@ -125,79 +193,11 @@ impl Region2 {
         trace!(res, "Рассчитана смешанная производная gamma_pi_tau");
         res
     }
-
-    // --- Обратные формулы ---
-    #[instrument(level = "trace")]
-    fn calc_t_ph(p: f64, h: f64) -> f64 {
-        let t = match determine_region2_subregion_ph(p, h) {
-            Region2Subregion::Region2a => {
-                let mut t_val = 0.0;
-                for &(n, i, j) in BACKWARD2A_T_PH.iter() {
-                    t_val += n * p.powi(i) * ((h / 2000.0) - 2.1).powi(j);
-                }
-                trace!("Использовано уравнение субрегиона 2a");
-                t_val
-            },
-            Region2Subregion::Region2b => {
-                let mut t_val = 0.0;
-                for &(n, i, j) in BACKWARD2B_T_PH.iter() {
-                    t_val += n * (p - 2.0).powi(i) * ((h / 2000.0) - 2.6).powi(j);
-                }
-                trace!("Использовано уравнение субрегиона 2b");
-                t_val
-            },
-            Region2Subregion::Region2c => {
-                let mut t_val = 0.0;
-                for &(n, i, j) in BACKWARD2C_T_PH.iter() {
-                    // Eq. (24): Смещение давления +25
-                    t_val += n * (p + 25.0).powi(i) * ((h / 2000.0) - 1.8).powi(j);
-                }
-                trace!("Использовано уравнение субрегиона 2c");
-                t_val
-            },
-        };
-        trace!(t, "Вычислена температура по обратному уравнению (p, h) для Region2");
-        t
-    }
-
-    #[instrument(level = "trace")]
-    fn calc_t_ps(p: f64, s: f64) -> f64 {
-        let t = match determine_region2_subregion_ps(p, s) {
-            Region2Subregion::Region2a => {
-                let mut t_val = 0.0;
-                for &(n, i, j) in BACKWARD2A_T_PS.iter() {
-                    t_val += n * p.powf(i as f64) * ((s / 2.0) - 2.0).powi(j);
-                }
-                trace!("Использовано уравнение субрегиона 2a");
-                t_val
-            },
-            Region2Subregion::Region2b => {
-                let mut t_val = 0.0;
-                for &(n, i, j) in BACKWARD2B_T_PS.iter() {
-                    // ИСПРАВЛЕНО: Eq. (26) для 2b использует s* = 0.7853 и терм (10 - sigma)
-                    t_val += n * p.powi(i) * (10.0 - (s / 0.7853)).powi(j);
-                }
-                trace!("Использовано уравнение субрегиона 2b");
-                t_val
-            },
-            Region2Subregion::Region2c => {
-                let mut t_val = 0.0;
-                for &(n, i, j) in BACKWARD2C_T_PS.iter() {
-                    // Eq. (27) для 2c использует s* = 2.9251 и терм (2 - sigma)
-                    t_val += n * p.powi(i) * (2.0 - (s / 2.9251)).powi(j);
-                }
-                trace!("Использовано уравнение субрегиона 2c");
-                t_val
-            },
-        };
-        trace!(t, "Вычислена температура по обратному уравнению (p, s) для Region2");
-        t
-    }
 }
 
 impl WaterRegionModel for Region2 {
     #[instrument(level = "debug", skip(self))]
-    fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, &'static str> {
+    fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, If97Error> {
         let pi = p / Self::P_STAR;
         let tau = Self::T_STAR / t;
         trace!(pi, tau, "Приведенные параметры");
@@ -223,22 +223,22 @@ impl WaterRegionModel for Region2 {
     }
 
     #[instrument(level = "debug", skip(self))]
-    fn calculate_ph(&self, p: f64, h: f64) -> Result<WaterState, &'static str> {
+    fn calculate_ph(&self, p: f64, h: f64) -> Result<WaterState, If97Error> {
         let t = Self::calc_t_ph(p, h);
         if t < 273.15 || t > 1073.15 || p > 100.0 {
             error!(t, "Вычисленная температура {}K вне границ Региона 2", t);
-            return Err("Точка (p, h) лежит вне границ Региона 2");
+            return Err(If97Error::OutOfBounds("Точка (p, h) лежит вне границ Региона 2".into()));
         }
         debug!(t, "Переход к прямому расчету pt после обратного уравнения (p, h)");
         self.calculate_pt(p, t)
     }
 
     #[instrument(level = "debug", skip(self))]
-    fn calculate_ps(&self, p: f64, s: f64) -> Result<WaterState, &'static str> {
+    fn calculate_ps(&self, p: f64, s: f64) -> Result<WaterState, If97Error> {
         let t = Self::calc_t_ps(p, s);
         if t < 273.15 || t > 1073.15 || p > 100.0 {
             error!(t, "Вычисленная температура {}K вне границ Региона 2", t);
-            return Err("Точка (p, s) лежит вне границ Региона 2");
+            return Err(If97Error::OutOfBounds("Точка (p, s) лежит вне границ Региона 2".into()));
         }
         debug!(t, "Переход к прямому расчету pt после обратного уравнения (p, s)");
         self.calculate_pt(p, t)

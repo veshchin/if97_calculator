@@ -1,9 +1,9 @@
-// core/tests/integration_csv_test.rs
+// File: tests/integration_csv_test.rs
 
 use std::error::Error;
 use std::fs::File;
 use serde::Deserialize;
-use if97_core::domain::calculator::Calculator;
+use if97_core::domain::calculator::If97;
 
 mod tests;
 
@@ -48,11 +48,9 @@ macro_rules! assert_relative_eq {
 fn test_core_against_python_csv() -> Result<(), Box<dyn Error>> {
     let file = File::open("../core/tests/if97_rust_test_data.csv")
         .expect("CSV файл не найден.");
-
     let mut rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .from_reader(file);
-
     let mut passed = 0;
 
     for result in rdr.deserialize() {
@@ -61,24 +59,22 @@ fn test_core_against_python_csv() -> Result<(), Box<dyn Error>> {
             Ok(r) => r,
             Err(_) => continue,
         };
-
         let tolerance = if row.region == 4 && row.t > 623.15 { 1e-5 } else { 1e-6 };
 
+        // Тестируем систему целиком через новый фасад If97
         let calc_state = if row.region == 4 {
-            Calculator::calculate_px(row.p, row.x.unwrap_or(0.0))
+            If97::px(row.p, row.x.unwrap_or(0.0))
         } else {
-            Calculator::calculate_pt(row.p, row.t)
+            If97::pt(row.p, row.t)
         };
 
         assert!(calc_state.is_ok(), "Ошибка расчета для P={}, T={}", row.p, row.t);
         let state = calc_state.unwrap();
-
         let ctx = format!("Region {}, P: {}, T: {}", row.region, row.p, row.t);
 
         assert_relative_eq!(state.v, row.v, tolerance, format!("{} -> Объем (v)", ctx));
         assert_relative_eq!(state.h, row.h, tolerance, format!("{} -> Энтальпия (h)", ctx));
         assert_relative_eq!(state.s, row.s, tolerance, format!("{} -> Энтропия (s)", ctx));
-
         if row.cp.is_finite() && state.cp.is_finite() {
             assert_relative_eq!(state.cp, row.cp, tolerance, format!("{} -> Теплоемкость (cp)", ctx));
         }

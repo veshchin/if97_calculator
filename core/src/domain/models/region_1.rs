@@ -2,6 +2,8 @@
 
 use crate::domain::state::{Region, WaterState};
 use crate::domain::traits::WaterRegionModel;
+use crate::domain::math::GibbsRegion;
+use crate::domain::errors::If97Error;
 use crate::domain::constants::R;
 use crate::domain::tables::{REGION1, BACKWARD1_T_PH, BACKWARD1_T_PS};
 use tracing::{instrument, trace, debug, error};
@@ -28,7 +30,35 @@ impl Region1 {
         powers
     }
 
-    // --- Математика (Гамма-функции) ---
+    // --- Обратные формулы ---
+    #[instrument(level = "trace")]
+    fn calc_t_ph(p: f64, h: f64) -> f64 {
+        let pi = p / 1.0;
+        let eta_term = (h / 2500.0) + 1.0;
+        let mut t_ratio = 0.0;
+        for &(n, i, j) in BACKWARD1_T_PH.iter() {
+            t_ratio += n * pi.powi(i) * eta_term.powi(j);
+        }
+        let t = t_ratio * 1.0;
+        trace!(t, "Вычислена температура по обратному уравнению (p, h) для Region1");
+        t
+    }
+
+    #[instrument(level = "trace")]
+    fn calc_t_ps(p: f64, s: f64) -> f64 {
+        let pi = p / 1.0;
+        let sigma_term = (s / 1.0) + 2.0;
+        let mut t_ratio = 0.0;
+        for &(n, i, j) in BACKWARD1_T_PS.iter() {
+            t_ratio += n * pi.powi(i) * sigma_term.powi(j);
+        }
+        let t = t_ratio * 1.0;
+        trace!(t, "Вычислена температура по обратному уравнению (p, s) для Region1");
+        t
+    }
+}
+
+impl GibbsRegion for Region1 {
     #[instrument(level = "trace", skip(self))]
     fn gamma(&self, pi: f64, tau: f64) -> f64 {
         let pi_term = 7.1 - pi;
@@ -109,38 +139,11 @@ impl Region1 {
         trace!(res, "Рассчитана смешанная производная gamma_pi_tau");
         res
     }
-
-    // --- Обратные формулы ---
-    #[instrument(level = "trace")]
-    fn calc_t_ph(p: f64, h: f64) -> f64 {
-        let pi = p / 1.0;
-        let eta_term = (h / 2500.0) + 1.0;
-        let mut t_ratio = 0.0;
-        for &(n, i, j) in BACKWARD1_T_PH.iter() {
-            t_ratio += n * pi.powi(i) * eta_term.powi(j);
-        }
-        let t = t_ratio * 1.0;
-        trace!(t, "Вычислена температура по обратному уравнению (p, h) для Region1");
-        t
-    }
-
-    #[instrument(level = "trace")]
-    fn calc_t_ps(p: f64, s: f64) -> f64 {
-        let pi = p / 1.0;
-        let sigma_term = (s / 1.0) + 2.0;
-        let mut t_ratio = 0.0;
-        for &(n, i, j) in BACKWARD1_T_PS.iter() {
-            t_ratio += n * pi.powi(i) * sigma_term.powi(j);
-        }
-        let t = t_ratio * 1.0;
-        trace!(t, "Вычислена температура по обратному уравнению (p, s) для Region1");
-        t
-    }
 }
 
 impl WaterRegionModel for Region1 {
     #[instrument(level = "debug", skip(self))]
-    fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, &'static str> {
+    fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, If97Error> {
         let pi = p / Self::P_STAR;
         let tau = Self::T_STAR / t;
         trace!(pi, tau, "Приведенные параметры");
@@ -166,22 +169,22 @@ impl WaterRegionModel for Region1 {
     }
 
     #[instrument(level = "debug", skip(self))]
-    fn calculate_ph(&self, p: f64, h: f64) -> Result<WaterState, &'static str> {
+    fn calculate_ph(&self, p: f64, h: f64) -> Result<WaterState, If97Error> {
         let t = Self::calc_t_ph(p, h);
         if t < 273.15 || t > 623.15 || p > 100.0 {
             error!(t, "Вычисленная температура {}K вне границ Региона 1", t);
-            return Err("Точка (p, h) лежит вне границ Региона 1");
+            return Err(If97Error::OutOfBounds("Точка (p, h) лежит вне границ Региона 1".into()));
         }
         debug!(t, "Переход к прямому расчету pt после обратного уравнения (p, h)");
         self.calculate_pt(p, t)
     }
 
     #[instrument(level = "debug", skip(self))]
-    fn calculate_ps(&self, p: f64, s: f64) -> Result<WaterState, &'static str> {
+    fn calculate_ps(&self, p: f64, s: f64) -> Result<WaterState, If97Error> {
         let t = Self::calc_t_ps(p, s);
         if t < 273.15 || t > 623.15 || p > 100.0 {
             error!(t, "Вычисленная температура {}K вне границ Региона 1", t);
-            return Err("Точка (p, s) лежит вне границ Региона 1");
+            return Err(If97Error::OutOfBounds("Точка (p, s) лежит вне границ Региона 1".into()));
         }
         debug!(t, "Переход к прямому расчету pt после обратного уравнения (p, s)");
         self.calculate_pt(p, t)

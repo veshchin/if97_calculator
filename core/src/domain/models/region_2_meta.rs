@@ -3,6 +3,8 @@
 use crate::domain::constants::R;
 use crate::domain::state::{Region, WaterState};
 use crate::domain::traits::WaterRegionModel;
+use crate::domain::math::GibbsRegion;
+use crate::domain::errors::If97Error;
 use crate::domain::tables::{REGION2_META, REGION2_CP0};
 use tracing::{instrument, trace, debug};
 
@@ -31,13 +33,12 @@ impl Region2Meta {
         for j in 1..60 { powers[j] = powers[j - 1] * tau_term; }
         powers
     }
+}
 
-    // Исправленная математика для Region2Meta
+impl GibbsRegion for Region2Meta {
     #[instrument(level = "trace", skip(self))]
     fn gamma(&self, pi: f64, tau: f64) -> f64 {
-        // В IF97 для метастабильного пара идеальная часть строится как n1 + n2*tau + сумма(nj * tau^Jj)
         let mut gamma_o = pi.ln() + Self::N1_0 + Self::N2_0 * tau;
-        // Пропускаем первые два коэффициента, так как они уже учтены как N1 и N2
         for &(n, j) in REGION2_CP0.iter().skip(2) {
             gamma_o += n * tau.powi(j as i32);
         }
@@ -48,7 +49,6 @@ impl Region2Meta {
         let gamma_r = REGION2_META.iter().fold(0.0, |acc, &(n, i, j)| {
             acc + n * pi_powers[i as usize] * tau_powers[j as usize]
         });
-
         let res = gamma_o + gamma_r;
         trace!(res, "Рассчитана базовая gamma метастабильного пара");
         res
@@ -56,7 +56,6 @@ impl Region2Meta {
 
     #[instrument(level = "trace", skip(self))]
     fn gamma_tau(&self, pi: f64, tau: f64) -> f64 {
-        // Производная: n1 -> 0, n2*tau -> n2
         let mut gamma_o_tau = Self::N2_0;
         for &(n, j) in REGION2_CP0.iter().skip(2) {
             if j != 0 { gamma_o_tau += n * (j as f64) * tau.powi((j - 1) as i32); }
@@ -69,7 +68,6 @@ impl Region2Meta {
             if j == 0 { return acc; }
             acc + n * pi_powers[i as usize] * (j as f64) * tau_powers[(j - 1) as usize]
         });
-
         let res = gamma_o_tau + gamma_r_tau;
         trace!(res, "Рассчитана производная gamma_tau метастабильного пара");
         res
@@ -86,7 +84,6 @@ impl Region2Meta {
             if i == 0 { return acc; }
             acc + n * (i as f64) * pi_powers[(i - 1) as usize] * tau_powers[j as usize]
         });
-
         let res = gamma_o_pi + gamma_r_pi;
         trace!(res, "Рассчитана производная gamma_pi метастабильного пара");
         res
@@ -103,7 +100,6 @@ impl Region2Meta {
             if i <= 1 { return acc; }
             acc + n * (i as f64) * ((i - 1) as f64) * pi_powers[(i - 2) as usize] * tau_powers[j as usize]
         });
-
         let res = gamma_o_pi_pi + gamma_r_pi_pi;
         trace!(res, "Рассчитана производная gamma_pi_pi метастабильного пара");
         res
@@ -111,10 +107,8 @@ impl Region2Meta {
 
     #[instrument(level = "trace", skip(self))]
     fn gamma_tau_tau(&self, pi: f64, tau: f64) -> f64 {
-        // ОШИБКА БЫЛА ЗДЕСЬ: инициализация -Self::N2_0 / (tau * tau) неверна
         let mut gamma_o_tau_tau = 0.0;
         for &(n, j) in REGION2_CP0.iter().skip(2) {
-            // Вторая производная: n * j * (j-1) * tau^(j-2)
             if j != 0 && j != 1 {
                 gamma_o_tau_tau += n * (j as f64) * ((j - 1) as f64) * tau.powi((j - 2) as i32);
             }
@@ -127,7 +121,6 @@ impl Region2Meta {
             if j <= 1 { return acc; }
             acc + n * pi_powers[i as usize] * (j as f64) * ((j - 1) as f64) * tau_powers[(j - 2) as usize]
         });
-
         let res = gamma_o_tau_tau + gamma_r_tau_tau;
         trace!(res, "Рассчитана производная gamma_tau_tau метастабильного пара");
         res
@@ -142,7 +135,6 @@ impl Region2Meta {
             if i == 0 || j == 0 { return acc; }
             acc + n * (i as f64) * pi_powers[(i - 1) as usize] * (j as f64) * tau_powers[(j - 1) as usize]
         });
-
         trace!(res, "Рассчитана смешанная производная gamma_pi_tau метастабильного пара");
         res
     }
@@ -150,7 +142,7 @@ impl Region2Meta {
 
 impl WaterRegionModel for Region2Meta {
     #[instrument(level = "debug", skip(self))]
-    fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, &'static str> {
+    fn calculate_pt(&self, p: f64, t: f64) -> Result<WaterState, If97Error> {
         let pi = p / Self::P_STAR;
         let tau = Self::T_STAR / t;
         trace!(pi, tau, "Приведенные параметры");

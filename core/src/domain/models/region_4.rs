@@ -5,6 +5,7 @@ use crate::domain::models::region_1::Region1;
 use crate::domain::models::region_2::Region2;
 use crate::domain::models::region_3::Region3; // Импортируем Region3
 use crate::domain::traits::WaterRegionModel;
+use crate::domain::errors::If97Error;
 use tracing::{instrument, trace, debug, error};
 
 const N: [f64; 10] = [
@@ -46,14 +47,14 @@ pub fn saturation_temperature(p: f64) -> f64 {
 }
 
 #[instrument(level = "debug")]
-pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, &'static str> {
+pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, If97Error> {
     if !(0.0..=1.0).contains(&x) {
         error!(x, "Степень сухости x вне диапазона 0.0 - 1.0");
-        return Err("Степень сухости x должна быть в диапазоне от 0.0 до 1.0");
+        return Err(If97Error::InvalidInput("Степень сухости x должна быть в диапазоне от 0.0 до 1.0".into()));
     }
     let t_sat = saturation_temperature(p);
     if t_sat.is_nan() {
-        return Err("Давление вне диапазона линии насыщения (0.000611 - 22.064 МПа)");
+        return Err(If97Error::OutOfBounds("Давление вне диапазона линии насыщения (0.000611 - 22.064 МПа)".into()));
     }
 
     let (state_liquid, state_vapor) = if t_sat <= 623.15 {
