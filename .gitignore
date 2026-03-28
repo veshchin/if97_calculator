@@ -26,4 +26,4 @@ Icon
 
 # Файлы кэша и конфигурации среды
 .env
-.env.*
+.env.*wasm/src-tauri/gen/
