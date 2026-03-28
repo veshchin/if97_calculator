@@ -1,0 +1,87 @@
+name: Release IF97 Calculator
+
+on:
+  push:
+    tags:
+      - 'v*' # Срабатывает при пуше тегов, например v1.0.0
+  workflow_dispatch: # Позволяет запустить сборку вручную
+
+jobs:
+  build-and-release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            os_suffix: WIN
+            binary_ext: .exe
+          - platform: macos-latest
+            os_suffix: MAC
+            binary_ext: ""
+          - platform: ubuntu-22.04
+            os_suffix: UBUNTU
+            binary_ext: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # Системные зависимости для сборки C++ (FLTK) и GUI (Tauri) на Linux
+      - name: Install dependencies (Ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y cmake libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
+
+      - name: Install Trunk
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: 'latest'
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          # Кэшируем по Cargo.lock в корне воркспейса
+          workspaces: ". -> target"
+
+      # 1. Сборка портативной версии (FLTK)
+      - name: Build FLTK Portable
+        run: cargo build --release -p if97_calculator_portable_win
+
+      # 2. Переименование портативного бинарника
+      - name: Rename Portable Binary
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp target/release/if97_calculator_portable_win${{ matrix.binary_ext }} artifacts/IF97-PORTABLE-${{ matrix.os_suffix }}${{ matrix.binary_ext }}
+
+      # 3. Сборка основной версии (Tauri + WASM)
+      # Экшен сам найдет tauri.conf.json в wasm/src-tauri
+      - name: Build and Release Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: "wasm"
+          tagName: ${{ github.ref_name }}
+          releaseName: "IF97-WIN/MAC/UBUNTU ${{ github.ref_name }}"
+          releaseBody: "Автоматическая сборка: Tauri (инсталляторы) и FLTK (портативные версии)."
+          releaseDraft: true
+          prerelease: false
+
+      # 4. Загрузка портативных версий в тот же релиз
+      - name: Upload Portable to Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} artifacts/IF97-PORTABLE-${{ matrix.os_suffix }}${{ matrix.binary_ext }} --clobber
