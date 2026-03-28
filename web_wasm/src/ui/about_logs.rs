@@ -1,3 +1,4 @@
+/* File: src/ui/about_logs.rs */
 use yew::prelude::*;
 use wasm_bindgen::prelude::*;
 
@@ -9,19 +10,36 @@ extern "C" {
 
 #[function_component(AboutLogsTab)]
 pub fn about_logs_tab() -> Html {
+    // Вспомогательное состояние-счетчик для принудительного обновления компонента
+    let tick = use_state(|| 0);
+
+    // Таймер живет только пока существует этот компонент
+    use_effect_with((), {
+        let tick = tick.clone();
+        move |_| {
+            let interval = gloo_timers::callback::Interval::new(500, move || {
+                tick.set(*tick + 1);
+            });
+            || drop(interval)
+        }
+    });
+
     let open_github = Callback::from(|_| {
         wasm_bindgen_futures::spawn_local(async move {
             #[derive(serde::Serialize)]
-            struct OpenArgs {
-                path: String,
-            }
-            if let Ok(args) = serde_wasm_bindgen::to_value(&OpenArgs {
-                path: "https://github.com/".to_string(), // Замени на свою ссылку
-            }) {
+            struct OpenArgs { path: String }
+            if let Ok(args) = serde_wasm_bindgen::to_value(&OpenArgs { path: "https://github.com/".to_string() }) {
                 let _ = invoke("plugin:shell|open", args).await;
             }
         });
     });
+
+    // Берем логи напрямую из глобального логгера (без использования StateContext)
+    let logs = if let Ok(buffer) = crate::logger::LOG_BUFFER.lock() {
+        buffer.clone()
+    } else {
+        Vec::new()
+    };
 
     html! {
         <div class="tab-content fade-in">
@@ -47,9 +65,10 @@ pub fn about_logs_tab() -> Html {
                     <button class="btn btn-outline btn-sm">{"💾 Экспорт (.log)"}</button>
                 </div>
                 <div class="terminal-view">
-                    <div class="log-line info">{"[INFO] if97_core initialized successfully in WASM environment."}</div>
-                    <div class="log-line debug">{"[DEBUG] (rho, t) solvers loaded for Region 3."}</div>
-                    <div class="log-line info">{"[INFO] IPC Bridge connected to Tauri Backend."}</div>
+                    { for logs.iter().map(|(level, msg)| {
+                        let class_name = format!("log-line {}", level);
+                        html! { <div class={class_name}>{ msg }</div> }
+                    }) }
                 </div>
             </div>
         </div>

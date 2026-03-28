@@ -1,8 +1,18 @@
+/* File: src/main.rs */
 mod app;
-pub mod ui;
-pub mod types;
-pub mod plot; // <- Теперь компилятор видит содержимое src/plot.rs
+mod ui;
+mod types;
+mod plot;
+mod logger; // Подключаем наш модуль
+
+use app::App;
 
 fn main() {
-    yew::Renderer::<app::App>::new().render();
+    // Инициализируем перехват логов tracing ДО старта Yew
+    logger::init_logger();
+
+    // Можно сразу бросить тестовый лог
+    tracing::info!("Tracing logger initialized successfully.");
+
+    yew::Renderer::<App>::new().render();
 }

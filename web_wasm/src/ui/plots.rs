@@ -3,7 +3,7 @@ use yew::prelude::*;
 use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElement, MouseEvent, WheelEvent};
-use crate::types::{AppContext, ChartType, SavedItem};
+use crate::types::{AppContext, StateContext, ChartType, SavedItem};
 use crate::plot::{draw_diagram, ChartOptions, PlotSeries};
 
 #[wasm_bindgen]
@@ -21,32 +21,21 @@ pub enum AxisVar { P, T, H, S, V }
 impl AxisVar {
     fn name(&self) -> &'static str {
         match self {
-            AxisVar::P => "p (МПа)",
-            AxisVar::T => "T (K)",
-            AxisVar::H => "h (кДж/кг)",
-            AxisVar::S => "s (кДж/кгK)",
-            AxisVar::V => "v (м³/кг)",
+            AxisVar::P => "p (МПа)", AxisVar::T => "T (K)", AxisVar::H => "h (кДж/кг)",
+            AxisVar::S => "s (кДж/кгK)", AxisVar::V => "v (м³/кг)",
         }
     }
 }
 
 #[derive(Clone, Copy, PartialEq)]
 struct PlotRanges {
-    p: (f64, f64),
-    t: (f64, f64),
-    h: (f64, f64),
-    s: (f64, f64),
-    v: (f64, f64),
+    p: (f64, f64), t: (f64, f64), h: (f64, f64), s: (f64, f64), v: (f64, f64),
 }
 
 impl Default for PlotRanges {
     fn default() -> Self {
         Self {
-            p: (0.001, 100.0),
-            t: (273.15, 1000.0),
-            h: (0.0, 4000.0),
-            s: (0.0, 10.0),
-            v: (0.001, 2.0),
+            p: (0.001, 100.0), t: (273.15, 1000.0), h: (0.0, 4000.0), s: (0.0, 10.0), v: (0.001, 2.0),
         }
     }
 }
@@ -65,12 +54,9 @@ impl PlotRanges {
 
 fn get_axes(ct: ChartType, swap: bool) -> (AxisVar, AxisVar) {
     let (mut x, mut y) = match ct {
-        ChartType::Ts => (AxisVar::S, AxisVar::T),
-        ChartType::Hs => (AxisVar::S, AxisVar::H),
-        ChartType::Ph => (AxisVar::H, AxisVar::P),
-        ChartType::Tv => (AxisVar::V, AxisVar::T),
-        ChartType::Pv => (AxisVar::V, AxisVar::P),
-        ChartType::Pt => (AxisVar::T, AxisVar::P),
+        ChartType::Ts => (AxisVar::S, AxisVar::T), ChartType::Hs => (AxisVar::S, AxisVar::H),
+        ChartType::Ph => (AxisVar::H, AxisVar::P), ChartType::Tv => (AxisVar::V, AxisVar::T),
+        ChartType::Pv => (AxisVar::V, AxisVar::P), ChartType::Pt => (AxisVar::T, AxisVar::P),
     };
     if swap { std::mem::swap(&mut x, &mut y); }
     (x, y)
@@ -79,23 +65,23 @@ fn get_axes(ct: ChartType, swap: bool) -> (AxisVar, AxisVar) {
 #[function_component(PlotsTab)]
 pub fn plots_tab(props: &PlotsProps) -> Html {
     let global_ctx = use_context::<AppContext>().expect("AppContext not found");
-    let canvas_ref = use_node_ref();
+    let state_ctx = use_context::<StateContext>().expect("StateContext not found");
+    let s = &*state_ctx;
 
+    let canvas_ref = use_node_ref();
     let chart_type = use_state(|| ChartType::Ts);
     let swap_axes = use_state(|| false);
     let draw_lines = use_state(|| false);
     let show_dome = use_state(|| true);
-
     let ranges = use_state(|| PlotRanges::default());
-    let selected_items = use_state(HashSet::<String>::new);
-    let is_sidebar_open = use_state(|| false);
-
     let is_dragging = use_state(|| false);
     let last_mouse = use_state(|| (0.0, 0.0));
 
     let (x_var, y_var) = get_axes(*chart_type, *swap_axes);
     let x_range = ranges.get(x_var);
     let y_range = ranges.get(y_var);
+
+    let selected_items = s.plot_selected.clone();
 
     use_effect_with((
                         canvas_ref.clone(), global_ctx.clone(), props.active,
@@ -148,15 +134,12 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let toggle_swap = { let s = swap_axes.clone(); Callback::from(move |_| { s.set(!*s); }) };
     let toggle_lines = { let s = draw_lines.clone(); Callback::from(move |_| s.set(!*s)) };
     let toggle_dome = { let s = show_dome.clone(); Callback::from(move |_| s.set(!*s)) };
-    let toggle_sidebar = { let s = is_sidebar_open.clone(); Callback::from(move |_| s.set(!*s)) };
 
     let on_min_change = |var: AxisVar| {
         let ranges = ranges.clone();
         Callback::from(move |e: Event| {
             if let Some(i) = e.target_dyn_into::<HtmlInputElement>() {
-                if let Ok(v) = i.value().parse() {
-                    let mut r = *ranges; r.set_min(var, v); ranges.set(r);
-                }
+                if let Ok(v) = i.value().parse() { let mut r = *ranges; r.set_min(var, v); ranges.set(r); }
             }
         })
     };
@@ -165,49 +148,33 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         let ranges = ranges.clone();
         Callback::from(move |e: Event| {
             if let Some(i) = e.target_dyn_into::<HtmlInputElement>() {
-                if let Ok(v) = i.value().parse() {
-                    let mut r = *ranges; r.set_max(var, v); ranges.set(r);
-                }
+                if let Ok(v) = i.value().parse() { let mut r = *ranges; r.set_max(var, v); ranges.set(r); }
             }
         })
     };
 
     let on_reset_scales = { let ranges = ranges.clone(); Callback::from(move |_| ranges.set(PlotRanges::default())) };
 
-    // Зум относительно позиции курсора мыши
     let on_wheel = {
         let ranges = ranges.clone(); let ct = *chart_type; let swap = *swap_axes;
         Callback::from(move |e: WheelEvent| {
-            e.prevent_default(); // Блокируем стандартный скролл страницы браузером (на всякий случай)
+            e.prevent_default();
             if let Some(el) = e.target_dyn_into::<HtmlElement>() {
-                let w = el.client_width() as f64;
-                let h = el.client_height() as f64;
+                let w = el.client_width() as f64; let h = el.client_height() as f64;
                 if w == 0.0 || h == 0.0 { return; }
-
-                // Вычисляем, в какой доле экрана находится мышь (от 0.0 до 1.0)
-                let fx = e.offset_x() as f64 / w;
-                let fy = e.offset_y() as f64 / h;
-
+                let fx = e.offset_x() as f64 / w; let fy = e.offset_y() as f64 / h;
                 let zoom_factor = if e.delta_y() > 0.0 { 1.1 } else { 0.9 };
                 let mut r = *ranges;
                 let (x_v, y_v) = get_axes(ct, swap);
                 let xr = r.get(x_v); let yr = r.get(y_v);
-
-                // Находим текущую координату данных под мышкой
                 let mouse_data_x = xr.0 + fx * (xr.1 - xr.0);
-                let mouse_data_y = yr.1 - fy * (yr.1 - yr.0); // Y инвертирован (0 сверху = y_max)
-
-                // Вычисляем новый размер видимого окна данных
+                let mouse_data_y = yr.1 - fy * (yr.1 - yr.0);
                 let new_span_x = (xr.1 - xr.0) * zoom_factor;
                 let new_span_y = (yr.1 - yr.0) * zoom_factor;
-
-                // Сдвигаем границы так, чтобы координата под мышкой осталась на месте
                 r.set_min(x_v, mouse_data_x - fx * new_span_x);
                 r.set_max(x_v, mouse_data_x + (1.0 - fx) * new_span_x);
-
                 r.set_min(y_v, mouse_data_y - (1.0 - fy) * new_span_y);
                 r.set_max(y_v, mouse_data_y + fy * new_span_y);
-
                 ranges.set(r);
             }
         })
@@ -217,29 +184,20 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let on_mouse_up = { let is_drag = is_dragging.clone(); Callback::from(move |_| { is_drag.set(false); }) };
     let on_mouse_leave = { let is_drag = is_dragging.clone(); Callback::from(move |_| { is_drag.set(false); }) };
 
-    // Адаптивный Pan (перемещение) относительно реального размера Canvas
     let on_mouse_move = {
         let is_drag = is_dragging.clone(); let last_m = last_mouse.clone();
         let ranges = ranges.clone(); let ct = *chart_type; let swap = *swap_axes;
         Callback::from(move |e: MouseEvent| {
             if *is_drag {
                 if let Some(el) = e.target_dyn_into::<HtmlElement>() {
-                    let w = el.client_width() as f64;
-                    let h = el.client_height() as f64;
+                    let w = el.client_width() as f64; let h = el.client_height() as f64;
                     if w == 0.0 || h == 0.0 { return; }
-
-                    let dx = e.client_x() as f64 - last_m.0;
-                    let dy = e.client_y() as f64 - last_m.1;
+                    let dx = e.client_x() as f64 - last_m.0; let dy = e.client_y() as f64 - last_m.1;
                     last_m.set((e.client_x() as f64, e.client_y() as f64));
-
                     let mut r = *ranges;
                     let (x_v, y_v) = get_axes(ct, swap);
                     let xr = r.get(x_v); let yr = r.get(y_v);
-
-                    // Смещение пропорционально ширине и высоте клиентского контейнера
-                    let x_shift = dx * (xr.1 - xr.0) / w;
-                    let y_shift = dy * (yr.1 - yr.0) / h;
-
+                    let x_shift = dx * (xr.1 - xr.0) / w; let y_shift = dy * (yr.1 - yr.0) / h;
                     r.set_min(x_v, xr.0 - x_shift); r.set_max(x_v, xr.1 - x_shift);
                     r.set_min(y_v, yr.0 + y_shift); r.set_max(y_v, yr.1 + y_shift);
                     ranges.set(r);
@@ -277,10 +235,8 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     };
 
     html! {
-        // Высота жестко высчитывается с учетом паддинга основного контента (20px сверху + 20px снизу = 40px)
         <div class="charts-container fade-in" style="display: flex; flex-direction: column; height: calc(100vh - 40px); overflow: hidden; position: relative;">
 
-            // --- ВЕРХНЯЯ ПАНЕЛЬ УПРАВЛЕНИЯ ---
             <div class="top-toolbar" style="display: flex; flex-wrap: wrap; gap: 15px; padding: 10px 15px; background: var(--card-bg); border-bottom: 1px solid var(--border); align-items: center; flex-shrink: 0; z-index: 5;">
                 <select class="styled-select" onchange={on_chart_type_change} style="padding: 6px 10px;">
                     <option value="ts" selected={*chart_type == ChartType::Ts}>{ "T-s Диаграмма" }</option>
@@ -294,6 +250,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                 <div style="display: flex; gap: 10px; border-right: 1px solid var(--border); padding-right: 15px;">
                     <label class="toggle-label" style="font-size: 0.85rem;"><input type="checkbox" checked={*swap_axes} onclick={toggle_swap} /> { "Оси 🔄" }</label>
                     <label class="toggle-label" style="font-size: 0.85rem;"><input type="checkbox" checked={*show_dome} onclick={toggle_dome} /> { "Купол" }</label>
+                    <label class="toggle-label" style="font-size: 0.85rem;"><input type="checkbox" checked={*draw_lines} onclick={toggle_lines} /> { "Линии" }</label>
                 </div>
 
                 { scale_input(x_var, x_range) }
@@ -301,50 +258,37 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
 
                 <button class="btn btn-outline btn-sm" onclick={on_reset_scales} title="Сбросить все масштабы">{"🔄"}</button>
                 <button class="btn btn-success btn-sm" onclick={on_save_png}>{"💾 PNG"}</button>
-
-                <div class="spacer"></div>
-
-                <button class="btn btn-primary btn-sm" onclick={toggle_sidebar}>
-                    { if *is_sidebar_open { "Скрыть данные ➡" } else { "⬅ Выбор данных" } }
-                </button>
             </div>
 
-            // --- ОБЛАСТЬ РЕНДЕРА И ШТОРКА ---
             <div style="flex-grow: 1; position: relative; overflow: hidden; background: var(--bg-color);">
-                <canvas
-                    id="plot-area" ref={canvas_ref} width="2400" height="1600" style="width: 100%; height: 100%; cursor: crosshair;"
-                    onwheel={on_wheel} onmousedown={on_mouse_down} onmouseup={on_mouse_up} onmousemove={on_mouse_move} onmouseleave={on_mouse_leave}
-                ></canvas>
-
-                // ВЫЕЗЖАЮЩАЯ ШТОРКА (ВКЛАДКА ДАННЫХ)
-                <div style={format!("position: absolute; top: 0; right: 0; bottom: 0; width: 320px; background: var(--card-bg); border-left: 1px solid var(--border); box-shadow: -4px 0 15px rgba(0,0,0,0.1); transform: translateX({}); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); display: flex; flex-direction: column; z-index: 10;", if *is_sidebar_open { "0" } else { "100%" })}>
-                    <div style="padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--hover-bg);">
+                <canvas id="plot-area" ref={canvas_ref} width="2400" height="1600" style="width: 100%; height: 100%; object-fit: contain; cursor: crosshair;" onwheel={on_wheel} onmousedown={on_mouse_down} onmouseup={on_mouse_up} onmousemove={on_mouse_move} onmouseleave={on_mouse_leave}></canvas>
+                // OVERLAY ПАНЕЛЬ ДАННЫХ (Выезжает слева)
+                <div style={format!("position: absolute; top: 0; left: 0; bottom: 0; width: 320px; background: var(--card-bg); border-right: 1px solid var(--border); box-shadow: 4px 0 15px rgba(0,0,0,0.15); transform: translateX({}); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); display: flex; flex-direction: column; z-index: 50;", if s.right_sidebar_open { "0" } else { "-120%" })}>
+                    <div style="padding: 15px; border-bottom: 1px solid var(--border); background: var(--hover-bg);">
                         <h3 style="margin: 0; font-size: 1.1rem;">{"Управление данными"}</h3>
                     </div>
 
-                    <div style="padding: 15px; border-bottom: 1px solid var(--border);">
-                        <label class="toggle-label" style="font-weight: 600; color: var(--primary);">
-                            <input type="checkbox" checked={*draw_lines} onclick={toggle_lines} />
-                            { "Отрисовывать линией с точками" }
-                        </label>
-                    </div>
-
                     <div style="padding: 15px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 8px;">
-                        { if global_ctx.is_empty() { html! { <div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">{"Нет сохраненных данных"}</div> } } else { html! {} } }
+                        { if global_ctx.is_empty() { html! { <div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">{"Нет данных для отрисовки"}</div> } } else { html! {} } }
+
                         { for global_ctx.iter().map(|item| {
                             let name = match item { SavedItem::Point(p) => p.name.clone(), SavedItem::Table(t) => t.name.clone() };
-                            let is_checked = selected_items.contains(&name);
+                            let is_checked = s.plot_selected.contains(&name);
+
                             let on_toggle = {
-                                let selected = selected_items.clone(); let name = name.clone();
+                                let state_ctx = state_ctx.clone(); let name = name.clone();
                                 Callback::from(move |_| {
-                                    let mut new_set = (*selected).clone();
-                                    if new_set.contains(&name) { new_set.remove(&name); } else { new_set.insert(name.clone()); }
-                                    selected.set(new_set);
+                                    let mut new_s = (*state_ctx).clone();
+                                    if new_s.plot_selected.contains(&name) { new_s.plot_selected.remove(&name); }
+                                    else { new_s.plot_selected.insert(name.clone()); }
+                                    state_ctx.set(new_s);
                                 })
                             };
+
                             html! {
-                                <label class="toggle-label" style="font-size: 0.95rem; padding: 6px; background: var(--hover-bg); border-radius: 4px; border: 1px solid transparent;">
-                                    <input type="checkbox" checked={is_checked} onclick={on_toggle} /> { name }
+                                <label class="toggle-label" style="font-size: 0.95rem; padding: 6px; background: var(--hover-bg); border-radius: 4px; border: 1px solid transparent; display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" checked={is_checked} onclick={on_toggle} />
+                                    <span>{ match item { SavedItem::Point(_) => "📍 ", SavedItem::Table(_) => "📋 " } }{ name }</span>
                                 </label>
                             }
                         }) }

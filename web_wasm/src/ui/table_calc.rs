@@ -29,7 +29,8 @@ fn calculate_table(mode: &str, input: &str) -> Vec<Result<WaterState, String>> {
         let line = line.trim(); if line.is_empty() { continue; }
         let parts: Vec<&str> = line.split(|c: char| c == ';' || c == '\t' || c.is_whitespace() || c == ',').filter(|s| !s.is_empty()).collect();
         if parts.len() >= 2 {
-            let v1_str = parts[0].replace(',', "."); let v2_str = parts[1].replace(',', ".");
+            let v1_str = parts[0].replace(',', ".");
+            let v2_str = parts[1].replace(',', ".");
             if let (Ok(v1), Ok(v2)) = (v1_str.parse::<f64>(), v2_str.parse::<f64>()) {
                 let res = match mode {
                     "pt" => If97::pt(v1.into(), v2.into()), "ph" => If97::ph(v1.into(), v2.into()),
@@ -56,9 +57,7 @@ fn process_table_state(mut new_state: PersistentState, app_ctx: &Vec<SavedItem>,
         } else if app_ctx.iter().any(|i| if let SavedItem::Table(t) = i { t.name == **custom_name } else { false }) && !custom_name.is_empty() {
             custom_name.set(String::new());
         }
-    } else if !custom_name.is_empty() {
-        custom_name.set(String::new());
-    }
+    } else if !custom_name.is_empty() { custom_name.set(String::new()); }
     new_state
 }
 
@@ -70,7 +69,6 @@ pub fn table_calc_tab() -> Html {
     let s = &*state_ctx;
     let custom_name = use_state(String::new);
     let save_status = use_state(|| Option::<String>::None);
-    let is_sidebar_open = use_state(|| false);
 
     let on_mode = {
         let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
@@ -169,8 +167,6 @@ pub fn table_calc_tab() -> Html {
         })
     };
 
-    let toggle_sidebar = { let s = is_sidebar_open.clone(); Callback::from(move |_| s.set(!*s)) };
-
     let valid_states: Vec<WaterState> = s.t_res.iter().filter_map(|r| r.clone().ok()).collect();
     let has_valid_results = !valid_states.is_empty();
 
@@ -182,14 +178,9 @@ pub fn table_calc_tab() -> Html {
         <div style="position: relative; height: 100%; overflow: hidden; display: flex; flex-direction: column;">
             <div class="table-calc-container fade-in" style="flex-grow: 1; overflow-y: auto; padding-bottom: 20px; display: flex; flex-direction: column;">
 
-                <div class="card instruction-card" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <div>
-                        <h2 style="margin: 0; margin-bottom: 5px;">{"Табличный расчет"}</h2>
-                        <p class="text-muted" style="margin: 0;">{"Вставьте столбцы с данными из Excel/TXT или загрузите файл. Разделители определяются автоматически."}</p>
-                    </div>
-                    <button class="btn btn-primary" onclick={toggle_sidebar.clone()}>
-                        { if *is_sidebar_open { "Скрыть панель ➡" } else { "📂 Сохраненные точки" } }
-                    </button>
+                <div class="card instruction-card" style="margin-bottom: 15px;">
+                    <h2 style="margin: 0; margin-bottom: 5px;">{"Табличный расчет"}</h2>
+                    <p class="text-muted" style="margin: 0;">{"Вставьте столбцы с данными из Excel/TXT или загрузите файл."}</p>
                 </div>
 
                 <div class="toolbar">
@@ -200,13 +191,13 @@ pub fn table_calc_tab() -> Html {
                         </select>
                     </div>
                     <button class="btn btn-outline" onclick={on_load_file}>{"📂 Открыть"}</button>
+                    <button class="btn btn-success" onclick={on_export_csv} disabled={s.t_res.is_empty()} style={if s.t_res.is_empty() { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>{"💾 CSV"}</button>
                     <div class="spacer"></div>
                     <div style="display: flex; gap: 10px; align-items: center; background: var(--hover-bg); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
                         <input type="text" class="styled-input" style="width: 220px; padding: 6px 10px;" value={(*custom_name).clone()} oninput={on_name_input} placeholder="Имя для этой таблицы..." disabled={!has_valid_results} />
                         <button class={classes!("btn", "btn-sm", if is_already_saved { "btn-primary" } else { "btn-success" })} onclick={on_save_to_plots} disabled={!has_valid_results} style={if !has_valid_results { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>
-                            { if is_already_saved { "🔄 Обновить" } else { "Сохранить 📈" } }
+                            { if is_already_saved { "Обновить" } else { "Сохранить" } }
                         </button>
-                        <button class="btn btn-success btn-sm" onclick={on_export_csv} disabled={s.t_res.is_empty()} style={if s.t_res.is_empty() { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>{"Экспорт CSV 💾"}</button>
                         { if let Some(status) = &*save_status { html! { <span class="fade-in" style="color: #198754; font-size: 0.9rem; font-weight: 500;">{ status }</span> } } else { html! {} } }
                     </div>
                 </div>
@@ -225,11 +216,10 @@ pub fn table_calc_tab() -> Html {
                 </div>
             </div>
 
-            // ВЫЕЗЖАЮЩАЯ ШТОРКА
-            <div style={format!("position: absolute; top: 0; right: 0; bottom: 0; width: 320px; background: var(--card-bg); border-left: 1px solid var(--border); box-shadow: -4px 0 15px rgba(0,0,0,0.1); transform: translateX({}); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); display: flex; flex-direction: column; z-index: 10;", if *is_sidebar_open { "0" } else { "100%" })}>
-                <div style="padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--hover-bg);">
+            // OVERLAY ПАНЕЛЬ ДАННЫХ (Выезжает слева)
+            <div style={format!("position: absolute; top: 0; left: 0; bottom: 0; width: 320px; background: var(--card-bg); border-right: 1px solid var(--border); box-shadow: 4px 0 15px rgba(0,0,0,0.15); transform: translateX({}); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); display: flex; flex-direction: column; z-index: 50;", if s.right_sidebar_open { "0" } else { "-120%" })}>
+                <div style="padding: 15px; border-bottom: 1px solid var(--border); background: var(--hover-bg);">
                     <h3 style="margin: 0; font-size: 1.1rem;">{"Сохраненные таблицы"}</h3>
-                    <button class="btn btn-outline btn-sm" style="border: none;" onclick={toggle_sidebar}>{"❌"}</button>
                 </div>
                 <div style="padding: 15px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 8px;">
                     { if !app_ctx.iter().any(|i| matches!(i, SavedItem::Table(_))) { html! { <div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">{"Нет сохраненных таблиц"}</div> } } else { html! {} } }
@@ -264,7 +254,6 @@ pub fn table_calc_tab() -> Html {
                     }) }
                 </div>
             </div>
-
         </div>
     }
 }

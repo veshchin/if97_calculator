@@ -6,11 +6,7 @@ use if97_core::domain::state::WaterState;
 use crate::types::{StateContext, AppContext, SavedPoint, SavedItem, PersistentState};
 
 fn is_same_state(s1: &WaterState, s2: &WaterState) -> bool {
-    s1.p.inner() == s2.p.inner() &&
-        s1.t.inner() == s2.t.inner() &&
-        s1.v.inner() == s2.v.inner() &&
-        s1.h.inner() == s2.h.inner() &&
-        s1.s.inner() == s2.s.inner()
+    s1.p.inner() == s2.p.inner() && s1.t.inner() == s2.t.inner() && s1.v.inner() == s2.v.inner() && s1.h.inner() == s2.h.inner() && s1.s.inner() == s2.s.inner()
 }
 
 fn calculate_state(mode: &str, v1_str: &str, v2_str: &str) -> Result<WaterState, String> {
@@ -36,7 +32,8 @@ fn process_single_state(mut new_state: PersistentState, app_ctx: &Vec<SavedItem>
             }
         },
         Err(err) => {
-            new_state.s_res = None; new_state.s_error = if err.is_empty() { None } else { Some(err) };
+            new_state.s_res = None;
+            new_state.s_error = if err.is_empty() { None } else { Some(err) };
             if app_ctx.iter().any(|i| if let SavedItem::Point(sp) = i { sp.name == **custom_name } else { false }) { custom_name.set(String::new()); }
         }
     }
@@ -51,7 +48,6 @@ pub fn single_calc_tab() -> Html {
     let s = &*state_ctx;
     let custom_name = use_state(String::new);
     let save_status = use_state(|| Option::<String>::None);
-    let is_sidebar_open = use_state(|| false);
 
     let is_already_saved = s.s_res.as_ref().map_or(false, |res| {
         app_ctx.iter().any(|i| if let SavedItem::Point(sp) = i { is_same_state(&sp.state, res) } else { false })
@@ -114,7 +110,7 @@ pub fn single_calc_tab() -> Html {
                         name: target_name, state: res.clone(),
                         orig_mode: s_ref.s_mode.clone(), orig_v1: s_ref.s_v1.clone(), orig_v2: s_ref.s_v2.clone()
                     }));
-                    save_status.set(Some("✅ Добавлено".to_string()));
+                    save_status.set(Some("✅ Сохранено".to_string()));
                     custom_name.set(String::new());
                 }
                 app_ctx.set(items);
@@ -122,26 +118,12 @@ pub fn single_calc_tab() -> Html {
         })
     };
 
-    let toggle_sidebar = { let s = is_sidebar_open.clone(); Callback::from(move |_| s.set(!*s)) };
-
-    let labels = match s.s_mode.as_str() {
-        "pt" => ("Давление (p), MPa", "Температура (T), K"), "ph" => ("Давление (p), MPa", "Энтальпия (h), kJ/kg"),
-        "ps" => ("Давление (p), MPa", "Энтропия (s), kJ/kgK"), "px" => ("Давление (p), MPa", "Степень сухости (x)"),
-        "rhot" => ("Плотность (rho), kg/m³", "Температура (T), K"), _ => ("Параметр 1", "Параметр 2"),
-    };
-
     html! {
         <div style="position: relative; height: 100%; overflow: hidden; display: flex; flex-direction: column;">
-
             <div class="tab-content fade-in" style="flex-grow: 1; overflow-y: auto; padding-bottom: 20px;">
-                <div class="card instruction-card" style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <h2 style="margin: 0; margin-bottom: 5px;">{"Одиночный расчет"}</h2>
-                        <p class="text-muted" style="margin: 0;">{"Мгновенный расчет свойств воды."}</p>
-                    </div>
-                    <button class="btn btn-primary" onclick={toggle_sidebar.clone()}>
-                        { if *is_sidebar_open { "Скрыть панель ➡" } else { "📂 Сохраненные точки" } }
-                    </button>
+                <div class="card instruction-card">
+                    <h2 style="margin: 0; margin-bottom: 5px;">{"Одиночный расчет"}</h2>
+                    <p class="text-muted" style="margin: 0;">{"Мгновенный расчет свойств воды."}</p>
                 </div>
 
                 <div class="card">
@@ -161,7 +143,7 @@ pub fn single_calc_tab() -> Html {
                         <div style="display: flex; gap: 10px; flex-grow: 1; align-items: center;">
                             <input type="text" class="styled-input" style="flex-grow: 1;" value={(*custom_name).clone()} oninput={on_name_input} placeholder="Свое имя точки (необязательно)..." disabled={s.s_res.is_none()} />
                             <button class={classes!("btn", if is_already_saved { "btn-primary" } else { "btn-success" })} onclick={on_save} disabled={s.s_res.is_none()} style={if s.s_res.is_none() { "opacity: 0.5; cursor: not-allowed; white-space: nowrap;" } else { "white-space: nowrap;" }}>
-                                { if is_already_saved { "🔄 Обновить" } else { "💾 Сохранить" } }
+                                { if is_already_saved { "Обновить" } else { "Сохранить" } }
                             </button>
                         </div>
                         { if let Some(status) = &*save_status { html! { <div class="fade-in" style="color: #198754; font-weight: 500; font-size: 0.95rem; margin-left: 15px; min-width: 120px;">{ status }</div> } } else { html! { <div style="min-width: 120px; margin-left: 15px;"></div> } } }
@@ -189,11 +171,10 @@ pub fn single_calc_tab() -> Html {
                 } else { html! {} } }
             </div>
 
-            // ВЫЕЗЖАЮЩАЯ ШТОРКА
-            <div style={format!("position: absolute; top: 0; right: 0; bottom: 0; width: 320px; background: var(--card-bg); border-left: 1px solid var(--border); box-shadow: -4px 0 15px rgba(0,0,0,0.1); transform: translateX({}); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); display: flex; flex-direction: column; z-index: 10;", if *is_sidebar_open { "0" } else { "100%" })}>
-                <div style="padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--hover-bg);">
+            // OVERLAY ПАНЕЛЬ ДАННЫХ (Выезжает слева)
+            <div style={format!("position: absolute; top: 0; left: 0; bottom: 0; width: 320px; background: var(--card-bg); border-right: 1px solid var(--border); box-shadow: 4px 0 15px rgba(0,0,0,0.15); transform: translateX({}); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); display: flex; flex-direction: column; z-index: 50;", if s.right_sidebar_open { "0" } else { "-120%" })}>
+                <div style="padding: 15px; border-bottom: 1px solid var(--border); background: var(--hover-bg);">
                     <h3 style="margin: 0; font-size: 1.1rem;">{"Сохраненные точки"}</h3>
-                    <button class="btn btn-outline btn-sm" style="border: none;" onclick={toggle_sidebar}>{"❌"}</button>
                 </div>
                 <div style="padding: 15px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 8px;">
                     { if !app_ctx.iter().any(|i| matches!(i, SavedItem::Point(_))) { html! { <div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">{"Нет сохраненных точек"}</div> } } else { html! {} } }

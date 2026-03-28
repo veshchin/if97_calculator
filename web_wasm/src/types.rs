@@ -1,12 +1,12 @@
 /* File: src/types.rs */
 use if97_core::domain::state::WaterState;
 use yew::UseStateHandle;
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SavedPoint {
     pub name: String,
     pub state: WaterState,
-    // Сохраняем оригинальный ввод для восстановления
     pub orig_mode: String,
     pub orig_v1: String,
     pub orig_v2: String,
@@ -16,7 +16,6 @@ pub struct SavedPoint {
 pub struct SavedTable {
     pub name: String,
     pub states: Vec<WaterState>,
-    // Сохраняем оригинальный ввод для восстановления
     pub orig_mode: String,
     pub orig_input: String,
 }
@@ -52,6 +51,9 @@ pub struct PersistentState {
     pub t_input: String,
     pub t_mode: String,
     pub t_res: Vec<Result<WaterState, String>>,
+    pub right_sidebar_open: bool,
+    pub plot_selected: HashSet<String>,
+    pub is_dark_theme: bool, // Поле logs удалено
 }
 
 pub type StateContext = UseStateHandle<PersistentState>;

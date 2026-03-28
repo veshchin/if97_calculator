@@ -5778,12 +5778,15 @@ name = "web_wasm"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "gloo-timers 0.3.0",
  "if97_core",
+ "once_cell",
  "plotters",
  "plotters-canvas",
  "serde",
  "serde-wasm-bindgen 0.6.5",
  "tracing",
+ "tracing-subscriber",
  "tracing-wasm",
  "wasm-bindgen",
  "wasm-bindgen-futures",
