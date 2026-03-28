@@ -1,5 +1,3 @@
-// File: src/domain/state.rs
-
 use serde::{Serialize, Deserialize};
 use crate::domain::units::*;
 
@@ -12,7 +10,7 @@ pub enum Region {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct WaterState {
     pub p: MegaPascal,
     pub t: Kelvin,
@@ -23,4 +21,5 @@ pub struct WaterState {
     pub cp: KiloJoulePerKilogramKelvin,
     pub w: MeterPerSecond,
     pub region: Region,
+    pub u: KiloJoulePerKilogram,
 }

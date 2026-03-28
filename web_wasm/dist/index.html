@@ -1,21 +1,15 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="utf-8" />
-    <title>IAPWS-IF97 Web Calculator</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { padding: 20px; background-color: #f8f9fa; }
-        .tab-content { padding: 20px; background: white; border: 1px solid #dee2e6; border-top: none; border-radius: 0 0 5px 5px; }
-        .nav-tabs { cursor: pointer; }
-        canvas { border: 1px solid #ccc; background: white; }
-    </style>
-<link rel="modulepreload" href="/web_wasm-d634626fcc1d6093.js" crossorigin="anonymous" integrity="sha384-2ygrw7vh9UfSZ7nx7ot+11UbLwQyiIKS+QS31qrA0CEX93cIf6ajfNsPOWT1kbGy"><link rel="preload" href="/web_wasm-d634626fcc1d6093_bg.wasm" crossorigin="anonymous" integrity="sha384-QLt3m/a3nfQH+0L+uyU58O4qFMv3PJ3vurW8ECUAv77LYq9LD85zsuZAFJc6lI1S" as="fetch" type="application/wasm"></head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IAPWS-IF97 Calculator Pro</title>
+    <link rel="stylesheet" href="/style-305cddff52ec4186.css" integrity="sha384-scSrVBxsdfwM5p/7XrereN3oTRp4Q+BHIzavpdJb9GxAScN9CNMMGezHoADYrw6C"/>
+<link rel="modulepreload" href="/web_wasm-23b55428e99f72c9.js" crossorigin="anonymous" integrity="sha384-p274Lz5kSArjmtQg8b99rJZAGBvR0+euTHbavCNR9/I+uasUaEE3NTv0zGXaIt5z"><link rel="preload" href="/web_wasm-23b55428e99f72c9_bg.wasm" crossorigin="anonymous" integrity="sha384-0XGYSQ/5dp6jvkPazY2X5HLTUPMcW+o2z3GGOSfVCiUYb+CDhhYTIVX8uBj9p2iK" as="fetch" type="application/wasm"></head>
 <body>
-
 <script type="module">
-import init, * as bindings from '/web_wasm-d634626fcc1d6093.js';
-const wasm = await init({ module_or_path: '/web_wasm-d634626fcc1d6093_bg.wasm' });
+import init, * as bindings from '/web_wasm-23b55428e99f72c9.js';
+const wasm = await init({ module_or_path: '/web_wasm-23b55428e99f72c9_bg.wasm' });
 
 
 window.wasmBindings = bindings;

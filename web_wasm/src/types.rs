@@ -1,52 +1,57 @@
+/* File: src/types.rs */
 use if97_core::domain::state::WaterState;
-use web_sys::WheelEvent;
+use yew::UseStateHandle;
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum PlotType {
-    PT,
-    PV,
-    TS,
-    HS,
-    PH,
-    RhoT,
-    VT,
-}
-#[derive(Clone)]
-pub struct SavedData {
+#[derive(Clone, Debug, PartialEq)]
+pub struct SavedPoint {
     pub name: String,
-    pub points: Vec<WaterState>,
-    pub visible: bool,
+    pub state: WaterState,
+    // Сохраняем оригинальный ввод для восстановления
+    pub orig_mode: String,
+    pub orig_v1: String,
+    pub orig_v2: String,
 }
 
-pub enum Msg {
-    SwitchTab(usize),
-
-    // Одиночный расчет
-    SetSingleMode(i32),
-    UpdateInputA(String),
-    UpdateInputB(String),
-    CalculateSingle,
-    SaveSinglePoint,
-
-    // Табличный расчет
-    SetBatchMode(i32),
-    UpdateBatchInput(String),
-    CalculateBatch,
-    SaveBatchTable,
-
-    // Графики
-    SetPlotType(PlotType),
-    ToggleDome(bool),
-    ToggleSwapAxes(bool),
-    ToggleAutoscale(bool),
-    UpdateLimit(u8, String),
-    ToggleDatasetVisibility(usize, bool),
-
-    // Навигация по графику
-    ZoomPlot(WheelEvent),
-    PlotMouseDown(i32, i32),
-    PlotMouseMove(i32, i32),
-    PlotMouseUp,
-
-    UpdatePrecision(usize),
+#[derive(Clone, Debug, PartialEq)]
+pub struct SavedTable {
+    pub name: String,
+    pub states: Vec<WaterState>,
+    // Сохраняем оригинальный ввод для восстановления
+    pub orig_mode: String,
+    pub orig_input: String,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SavedItem {
+    Point(SavedPoint),
+    Table(SavedTable),
+}
+
+pub type AppContext = UseStateHandle<Vec<SavedItem>>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ThermodynamicPoint {
+    pub p: f64,
+    pub t: f64,
+    pub h: f64,
+    pub s: f64,
+    pub v: f64,
+    pub x: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ChartType { Ts, Hs, Ph, Tv, Pv, Pt }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PersistentState {
+    pub s_mode: String,
+    pub s_v1: String,
+    pub s_v2: String,
+    pub s_res: Option<WaterState>,
+    pub s_error: Option<String>,
+    pub t_input: String,
+    pub t_mode: String,
+    pub t_res: Vec<Result<WaterState, String>>,
+}
+
+pub type StateContext = UseStateHandle<PersistentState>;

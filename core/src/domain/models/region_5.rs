@@ -197,8 +197,9 @@ impl WaterRegionModel for Region5 {
         let w_squared = (R * t * gamma_pi.powi(2)) /
             ( (gamma_pi - tau * gamma_pi_tau).powi(2) / (tau.powi(2) * gamma_tau_tau) - gamma_pi_pi );
         let w = if w_squared > 0.0 { (w_squared * 1000.0).sqrt() } else { f64::NAN };
+        let u = h - (p * v * 1000.0);
 
-        debug!(v, h, s, cp, w, "Успешный прямой расчет свойств Region5 (p, t)");
+        debug!(v, h, s, cp, w, u, "Успешный прямой расчет свойств Region5 (p, t)");
         Ok(WaterState {
             p: p.into(),
             t: t.into(),
@@ -208,6 +209,7 @@ impl WaterRegionModel for Region5 {
             s: s.into(),
             cp: cp.into(),
             w: w.into(),
+            u: u.into(),
             region: Region::Region5
         })
     }

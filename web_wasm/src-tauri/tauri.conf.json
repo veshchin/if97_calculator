@@ -10,6 +10,7 @@
     "frontendDist": "../web_wasm/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "IF97 Water Properties",

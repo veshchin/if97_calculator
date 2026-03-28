@@ -76,8 +76,9 @@ pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, If97Error> {
     let v = state_liquid.v.inner() + x * (state_vapor.v.inner() - state_liquid.v.inner());
     let h = state_liquid.h.inner() + x * (state_vapor.h.inner() - state_liquid.h.inner());
     let s = state_liquid.s.inner() + x * (state_vapor.s.inner() - state_liquid.s.inner());
+    let u = h - (p * v * 1000.0);
 
-    debug!(v, h, s, t_sat, "Успешный расчет двухфазной области Region4");
+    debug!(v, h, s, t_sat, u, "Успешный расчет двухфазной области Region4");
     Ok(WaterState {
         p: p.into(),
         t: t_sat.into(),
@@ -87,6 +88,7 @@ pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, If97Error> {
         s: s.into(),
         cp: f64::NAN.into(),
         w: f64::NAN.into(),
+        u: u.into(),
         region: Region::Region4
     })
 }

@@ -306,6 +306,7 @@ impl Region3 {
 
         let w_squared = r_t * 1000.0 * (dp_drho_term - dp_dt_term.powi(2) / (tau.powi(2) * phi_tau_tau));
         let w = if w_squared > 0.0 { w_squared.sqrt() } else { f64::NAN };
+        let u = h - (p * v * 1000.0);
 
         debug!(v, rho, h, s, cp, w, "Успешный прямой расчет свойств Region3 (p, t)");
         Ok(WaterState {
@@ -317,6 +318,7 @@ impl Region3 {
             s: s.into(),
             cp: cp.into(),
             w: w.into(),
+            u: u.into(),
             region: Region::Region3
         })
     }
@@ -345,8 +347,9 @@ impl Region3 {
 
         let w_squared = r_t * 1000.0 * (dp_drho_term - dp_dt_term.powi(2) / (tau.powi(2) * phi_tau_tau));
         let w = if w_squared > 0.0 { w_squared.sqrt() } else { f64::NAN };
+        let u = h - (p * v * 1000.0);
 
-        debug!(p, v, h, s, cp, w, "Успешный прямой расчет свойств Region3 (rho, t)");
+        debug!(p, v, h, s, cp, w, u, "Успешный прямой расчет свойств Region3 (rho, t)");
         Ok(WaterState {
             p: p.into(),
             t: t.into(),
@@ -356,6 +359,7 @@ impl Region3 {
             s: s.into(),
             cp: cp.into(),
             w: w.into(),
+            u: u.into(),
             region: Region::Region3
         })
     }

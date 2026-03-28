@@ -5,3 +5,21 @@
 /core/data
 
 *.csv
+
+.png
+
+*icon*
+
+*icons*
+
+*target*
+
+.*
+
+desktop_fltk
+
+grpc_server
+
+web_wasm/dist
+
+web_wasm/src-tauri/gen
