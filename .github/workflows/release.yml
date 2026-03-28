@@ -3,8 +3,12 @@ name: Release IF97 Calculator
 on:
   push:
     tags:
-      - 'v*' # Срабатывает при пуше тегов, например v1.0.0
-  workflow_dispatch: # Позволяет запустить сборку вручную
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  # Принудительно используем Node 24 для всех экшенов
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-and-release:
@@ -27,14 +31,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
 
-      # Системные зависимости для сборки C++ (FLTK) и GUI (Tauri) на Linux
       - name: Install dependencies (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -50,22 +53,26 @@ jobs:
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
         with:
-          # Кэшируем по Cargo.lock в корне воркспейса
           workspaces: ". -> target"
 
-      # 1. Сборка портативной версии (FLTK)
+      # 1. Явная сборка фронтенда (Wasm/Yew)
+      - name: Build Frontend
+        run: |
+          cd wasm
+          trunk build --release
+
+      # 2. Сборка портативной версии на базе FLTK [cite: 188]
       - name: Build FLTK Portable
         run: cargo build --release -p if97_calculator_portable_win
 
-      # 2. Переименование портативного бинарника
-      - name: Rename Portable Binary
+      # 3. Переименование портативного бинарника
+      - name: Prepare Portable Artifact
         shell: bash
         run: |
           mkdir -p artifacts
           cp target/release/if97_calculator_portable_win${{ matrix.binary_ext }} artifacts/IF97-PORTABLE-${{ matrix.os_suffix }}${{ matrix.binary_ext }}
 
-      # 3. Сборка основной версии (Tauri + WASM)
-      # Экшен сам найдет tauri.conf.json в wasm/src-tauri
+      # 4. Сборка и создание релиза Tauri (нативная версия)
       - name: Build and Release Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
@@ -73,12 +80,12 @@ jobs:
         with:
           projectPath: "wasm"
           tagName: ${{ github.ref_name }}
-          releaseName: "IF97-WIN/MAC/UBUNTU ${{ github.ref_name }}"
-          releaseBody: "Автоматическая сборка: Tauri (инсталляторы) и FLTK (портативные версии)."
+          releaseName: "IF97 Calculator ${{ github.ref_name }}"
+          releaseBody: "Автоматическая сборка: инсталляторы (Tauri) и портативные версии (FLTK)."
           releaseDraft: true
           prerelease: false
 
-      # 4. Загрузка портативных версий в тот же релиз
+      # 5. Дозагрузка портативного файла в тот же релиз
       - name: Upload Portable to Release
         shell: bash
         env:
