@@ -10,10 +10,8 @@ wasm-bindgen = "0.2"
 plotters = "0.3"
 plotters-canvas = "0.3"
 if97_core = { path = "../core" }
-console_error_panic_hook = "0.1.7"
 serde = { version = "1.0.228", features = ["derive"] }
 tracing = "0.1.44"
-tracing-wasm = "0.2.1"
 wasm-bindgen-futures = "0.4.64"
 serde-wasm-bindgen = "0.6.5"
 once_cell = "1.21.4"

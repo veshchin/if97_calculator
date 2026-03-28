@@ -10,7 +10,6 @@ if97_core = { path = "../core" }
 fltk = { version = "1.4", features = ["fltk-bundled"] }
 # Plotters для рендеринга графиков в буфер FLTK
 plotters = "0.3"
-group = "0.14.0-pre.0"
 # Логирование
 tracing = "0.1"
 tracing-subscriber = "0.3"

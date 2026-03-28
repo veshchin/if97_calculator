@@ -1,6 +1,7 @@
 /* File: src/ui/plots.rs */
 use yew::prelude::*;
 use std::collections::HashSet;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElement, MouseEvent, WheelEvent};
 use crate::types::{AppContext, StateContext, ChartType, SavedItem};
@@ -83,39 +84,51 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
 
     let selected_items = s.plot_selected.clone();
 
+    // МЕМОИЗАЦИЯ ДАННЫХ: Выполняется только если изменились исходные данные, тип графика или выборка
+    let series_list_memo = use_memo(
+        (global_ctx.clone(), *chart_type, *swap_axes, selected_items.clone()),
+        |(ctx, ct, swap, selected)| {
+            let mut series_list = Vec::new();
+            for item in ctx.iter() {
+                let (name, states) = match item {
+                    SavedItem::Point(p) => (p.name.clone(), vec![p.state.clone()]),
+                    SavedItem::Table(t) => (t.name.clone(), t.states.clone()),
+                };
+                if selected.contains(&name) {
+                    let points: Vec<(f64, f64)> = states.into_iter().map(|state| {
+                        let (mut x, mut y) = match ct {
+                            ChartType::Ts => (state.s.inner(), state.t.inner()), ChartType::Hs => (state.s.inner(), state.h.inner()),
+                            ChartType::Ph => (state.h.inner(), state.p.inner()), ChartType::Tv => (state.v.inner(), state.t.inner()),
+                            ChartType::Pv => (state.v.inner(), state.p.inner()), ChartType::Pt => (state.t.inner(), state.p.inner()),
+                        };
+                        if *swap { std::mem::swap(&mut x, &mut y); }
+                        (x, y)
+                    }).collect();
+                    series_list.push(PlotSeries { name, points });
+                }
+            }
+            series_list
+        }
+    );
+
+    // ОТРИСОВКА: Выполняется при каждом изменении масштаба (ranges), но не пересчитывает данные с нуля
     use_effect_with((
-                        canvas_ref.clone(), global_ctx.clone(), props.active,
-                        *chart_type, *swap_axes, *draw_lines, *show_dome, *ranges, selected_items.clone()
-                    ), |(canvas_ref, ctx, is_active, ct, swap, dl, dome, rng, selected)| {
+                        canvas_ref.clone(), props.active,
+                        *chart_type, *swap_axes, *draw_lines, *show_dome, *ranges, series_list_memo.clone()
+                    ), |(canvas_ref, is_active, ct, swap, dl, dome, rng, series_list)| {
         if *is_active {
             if let Some(canvas) = canvas_ref.cast::<HtmlCanvasElement>() {
-                let mut series_list = Vec::new();
-                for item in ctx.iter() {
-                    let (name, states) = match item {
-                        SavedItem::Point(p) => (p.name.clone(), vec![p.state.clone()]),
-                        SavedItem::Table(t) => (t.name.clone(), t.states.clone()),
-                    };
-                    if selected.contains(&name) {
-                        let points = states.into_iter().map(|state| {
-                            let (mut x, mut y) = match ct {
-                                ChartType::Ts => (state.s.inner(), state.t.inner()), ChartType::Hs => (state.s.inner(), state.h.inner()),
-                                ChartType::Ph => (state.h.inner(), state.p.inner()), ChartType::Tv => (state.v.inner(), state.t.inner()),
-                                ChartType::Pv => (state.v.inner(), state.p.inner()), ChartType::Pt => (state.t.inner(), state.p.inner()),
-                            };
-                            if *swap { std::mem::swap(&mut x, &mut y); }
-                            (x, y)
-                        }).collect();
-                        series_list.push(PlotSeries { name, points });
-                    }
-                }
-
                 let (x_v, y_v) = get_axes(*ct, *swap);
                 let opts = ChartOptions {
                     chart_type: *ct, swap_axes: *swap, draw_lines: *dl, show_dome: *dome,
                     x_range: rng.get(x_v), y_range: rng.get(y_v)
                 };
                 let canvas_id = "plot-area".to_string();
-                wasm_bindgen_futures::spawn_local(async move { let _ = draw_diagram(&canvas_id, &opts, series_list); });
+
+                // ИСПРАВЛЕНИЕ: Двойное разыменование достает Vec из-под Rc
+                let series_to_draw = (**series_list).clone();
+
+                wasm_bindgen_futures::spawn_local(async move { let _ = draw_diagram(&canvas_id, &opts, series_to_draw); });
             }
         }
         || ()
@@ -262,7 +275,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
 
             <div style="flex-grow: 1; position: relative; overflow: hidden; background: var(--bg-color);">
                 <canvas id="plot-area" ref={canvas_ref} width="2400" height="1600" style="width: 100%; height: 100%; object-fit: contain; cursor: crosshair;" onwheel={on_wheel} onmousedown={on_mouse_down} onmouseup={on_mouse_up} onmousemove={on_mouse_move} onmouseleave={on_mouse_leave}></canvas>
-                // OVERLAY ПАНЕЛЬ ДАННЫХ (Выезжает слева)
+
                 <div style={format!("position: absolute; top: 0; left: 0; bottom: 0; width: 320px; background: var(--card-bg); border-right: 1px solid var(--border); box-shadow: 4px 0 15px rgba(0,0,0,0.15); transform: translateX({}); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); display: flex; flex-direction: column; z-index: 50;", if s.right_sidebar_open { "0" } else { "-120%" })}>
                     <div style="padding: 15px; border-bottom: 1px solid var(--border); background: var(--hover-bg);">
                         <h3 style="margin: 0; font-size: 1.1rem;">{"Управление данными"}</h3>
