@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.if97.calculator",
   "build": {
-    "beforeDevCommand": "cd ../wasm && trunk serve",
-    "beforeBuildCommand": "cd ../wasm && trunk build",
-    "devUrl": "http://localhost:8080",
-    "frontendDist": "../wasm/dist"
+    "beforeBuildCommand": "trunk build",
+    "beforeDevCommand": "trunk serve",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:8080"
   },
   "app": {
     "withGlobalTauri": true,
