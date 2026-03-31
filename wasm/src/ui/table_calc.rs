@@ -1,8 +1,8 @@
 /* File: src/ui/table_calc.rs */
 use yew::prelude::*;
 use web_sys::{HtmlTextAreaElement, HtmlSelectElement, HtmlInputElement, MouseEvent};
-use if97_core::domain::calculator::If97;
-use if97_core::domain::state::WaterState;
+use if97_core::If97;
+use if97_core::WaterState;
 use crate::types::{StateContext, AppContext, SavedTable, SavedItem, PersistentState};
 use wasm_bindgen::prelude::*;
 
@@ -35,7 +35,7 @@ fn calculate_table(mode: &str, input: &str) -> Vec<Result<WaterState, String>> {
                 let res = match mode {
                     "pt" => If97::pt(v1.into(), v2.into()), "ph" => If97::ph(v1.into(), v2.into()),
                     "ps" => If97::ps(v1.into(), v2.into()), "px" => If97::px(v1.into(), v2.into()),
-                    "rhot" => If97::rhot(v1.into(), v2.into()), _ => Err(if97_core::domain::errors::If97Error::InvalidInput("".into())),
+                    "rhot" => If97::rhot(v1.into(), v2.into()), _ => Err(if97_core::errors::If97Error::InvalidInput("".into())),
                 };
                 results.push(res.map_err(|_| "Вне диапазона".to_string()));
             } else { results.push(Err("Ошибка чтения".to_string())); }

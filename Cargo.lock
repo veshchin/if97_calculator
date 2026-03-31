@@ -2116,7 +2116,7 @@ dependencies = [
 
 [[package]]
 name = "if97_calculator_native"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -2130,7 +2130,7 @@ dependencies = [
 
 [[package]]
 name = "if97_calculator_portable_win"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "csv",
@@ -2144,7 +2144,7 @@ dependencies = [
 
 [[package]]
 name = "if97_calculator_web"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gloo-timers 0.3.0",
  "if97_core",
@@ -2163,7 +2163,7 @@ dependencies = [
 
 [[package]]
 name = "if97_core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "csv",
  "serde",

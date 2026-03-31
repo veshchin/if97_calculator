@@ -1,11 +1,21 @@
+// File: build.rs
+
+//! Скрипт сборки (build script) для кодогенерации на этапе компиляции.
+//!
+//! Этот скрипт автоматически читает CSV-файлы с коэффициентами стандарта IAPWS-IF97
+//! из директории `data/` и генерирует статический Rust-код (`tables.rs`),
+//! который затем подключается в основной код библиотеки.
+//! Это обеспечивает нулевые накладные расходы (zero-cost) при чтении коэффициентов в рантайме.
+
 use std::env;
 use std::fs;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Указываем Cargo пересобирать проект только если изменилось содержимое папки data/
+    // Инструктируем Cargo перезапускать этот скрипт только при изменении файлов в папке data/
     println!("cargo:rerun-if-changed=data/");
 
+    // Определяем директорию для сгенерированного кода (предоставляется Cargo)
     let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR не задан");
     let dest_path = Path::new(&out_dir).join("tables.rs");
     let data_dir = Path::new("data");
@@ -16,6 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     generated_code.push_str("// DO NOT EDIT MANUALLY\n\n");
 
     if let Ok(entries) = fs::read_dir(data_dir) {
+        // Фильтруем только валидные нескрытые CSV-файлы
         let mut paths: Vec<_> = entries
             .filter_map(|e| e.ok())
             .map(|e| e.path())
@@ -29,14 +40,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .collect();
 
-        // Сортируем пути для детерминированности сборки
+        // Сортируем пути для гарантии детерминированности сборки
+        // (чтобы сгенерированный бинарник был идентичным при каждой пересборке)
         paths.sort();
 
         for path in paths {
+            // Имя файла становится именем константы массива (например, region1.csv -> REGION1)
             let file_stem = path.file_stem().unwrap().to_str().unwrap().to_uppercase();
             let contents = fs::read_to_string(&path).expect("Не удалось прочитать CSV файл");
 
-            // Собираем валидные строки, разбитые на колонки
+            // Парсим содержимое CSV, пропуская пустые строки
             let mut valid_lines = Vec::new();
             for line in contents.lines() {
                 let line = line.trim();
@@ -48,15 +61,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if valid_lines.is_empty() { continue; }
             let cols = valid_lines[0].len();
 
-            // Динамически определяем типы колонок (начиная со 2-й)
-            // 1-я колонка всегда f64 (коэффициент n)
+            // Динамический вывод типов колонок.
+            // Стандарт IAPWS использует целые числа (i32) для степеней (i, j)
+            // и числа с плавающей точкой (f64) для весовых коэффициентов (n).
+            // Колонка 0 (коэффициент n) всегда считается f64.
             let mut col_types = vec!["f64".to_string()];
             for col_idx in 1..cols {
                 let mut is_float = false;
                 for parts in &valid_lines {
                     if parts.len() > col_idx {
                         let val_str = parts[col_idx];
-                        // Если строка не парсится как строгое целое i32 (например, есть точка), значит это f64
+                        // Если хотя бы одно значение содержит точку или 'e',
+                        // парсинг в i32 падает, и колонка помечается как f64
                         if val_str.parse::<i32>().is_err() {
                             is_float = true;
                             break;
@@ -66,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 col_types.push(if is_float { "f64".to_string() } else { "i32".to_string() });
             }
 
-            // Формируем сигнатуру типа массива (поддерживаем до 4 колонок для Региона 3)
+            // Формируем Rust-сигнатуру кортежа в зависимости от количества колонок
             let type_decl = match cols {
                 1 => "f64".to_string(),
                 2 => format!("(f64, {})", col_types[1]),
@@ -77,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             generated_code.push_str(&format!("pub const {}: &[{}] = &[\n", file_stem, type_decl));
 
-            // Генерируем данные с учетом определенных типов
+            // Генерация строк массива с учетом определенных типов данных
             for (line_num, parts) in valid_lines.iter().enumerate() {
                 if cols == 1 {
                     let n: f64 = parts[0].parse().unwrap_or_else(|_| panic!("Ошибка n в {:?}:{}", path, line_num));
@@ -105,6 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("cargo:warning=Директория 'data' не найдена. Таблицы не будут сгенерированы.");
     }
 
+    // Записываем итоговый сгенерированный код в файл tables.rs
     fs::write(&dest_path, generated_code).expect("Не удалось записать сгенерированный файл tables.rs");
     Ok(())
 }

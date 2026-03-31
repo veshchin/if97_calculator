@@ -2,7 +2,7 @@
 use plotters::prelude::*;
 use plotters_canvas::CanvasBackend;
 use crate::types::ChartType;
-use if97_core::domain::calculator::If97;
+use if97_core::If97;
 use std::cell::RefCell;
 
 const INSIDE: u8 = 0; const LEFT: u8 = 1; const RIGHT: u8 = 2; const BOTTOM: u8 = 4; const TOP: u8 = 8;
@@ -94,7 +94,7 @@ pub fn draw_diagram(canvas_id: &str, opts: &ChartOptions, series_list: Vec<PlotS
                 for i in 0..=steps {
                     let t = i as f64 / steps as f64;
                     let p_val = (p_min.ln() + t * (p_max.ln() - p_min.ln())).exp();
-                    let get_coord = |state: if97_core::domain::state::WaterState| -> (f64, f64) {
+                    let get_coord = |state: if97_core::WaterState| -> (f64, f64) {
                         let (mut x, mut y) = match opts.chart_type {
                             ChartType::Ts => (state.s.inner(), state.t.inner()), ChartType::Hs => (state.s.inner(), state.h.inner()),
                             ChartType::Ph => (state.h.inner(), state.p.inner()), ChartType::Tv => (state.v.inner(), state.t.inner()),

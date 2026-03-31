@@ -1,13 +1,14 @@
 // File: tests/integration_csv_test.rs
 
+//! Интеграционные тесты для проверки ядра расчетов (if97_core)
+//! с использованием верификационных данных IAPWS-IF97, загружаемых из CSV.
+
 use std::error::Error;
 use std::fs::File;
 use serde::Deserialize;
-use if97_core::domain::calculator::If97;
-use if97_core::domain::units::*;
+use if97_core::If97;
 
-mod tests;
-
+/// Структура, описывающая маппинг колонок из тестового CSV файла.
 #[derive(Debug, Deserialize)]
 struct TestRow {
     #[serde(rename = "P_MPa")]
@@ -30,6 +31,8 @@ struct TestRow {
     w: f64,
 }
 
+/// Вспомогательный макрос для валидации относительной погрешности вычислений
+/// в рамках заданного допуска (tolerance).
 macro_rules! assert_relative_eq {
     ($calc:expr, $ref:expr, $eps:expr, $msg:expr) => {
         let calc = $calc;
@@ -45,6 +48,8 @@ macro_rules! assert_relative_eq {
     };
 }
 
+/// Пакетный прогон по CSV-файлу с контрольными точками. Сверяет результаты библиотеки
+/// с эталоном IAPWS, учитывая послабления допусков в околокритической зоне.
 #[test]
 fn test_core_against_python_csv() -> Result<(), Box<dyn Error>> {
     let file = File::open("../core/tests/if97_rust_test_data.csv")

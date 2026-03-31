@@ -1,10 +1,16 @@
 // core/src/domain/boundaries.rs
 
-use crate::domain::state::Region;
-use crate::domain::models::region_4::saturation_pressure;
+//! Модуль определения границ регионов по стандарту IAPWS-IF97.
+//!
+//! Содержит логику маршрутизации (в какой регион попадает заданная точка p-T),
+//! а также уравнения для внутренних границ, таких как граница B23.
+
+use crate::state::Region;
+use crate::models::region_4::saturation_pressure;
 use tracing::{instrument, trace};
 
-// Точная граница B23 по стандарту IAPWS-IF97
+/// Точная граница B23 по стандарту IAPWS-IF97 (между Регионом 2 и Регионом 3).
+/// Возвращает давление в МПа по заданной температуре в К.
 #[instrument(level = "trace")]
 pub fn b23_pressure(t: f64) -> f64 {
     let n1 = 0.34805185628969e3;
@@ -13,6 +19,7 @@ pub fn b23_pressure(t: f64) -> f64 {
     n1 + n2 * t + n3 * t * t
 }
 
+/// Основная функция маршрутизации: определяет регион по давлению и температуре.
 #[instrument(level = "trace")]
 pub fn determine_region(p: f64, t: f64) -> Region {
     if t < 273.15 || t > 2273.15 || p < 0.0 || p > 100.0 {
@@ -61,6 +68,8 @@ pub fn determine_region(p: f64, t: f64) -> Region {
     }
 }
 
+/// Внутренние субрегионы Региона 2.
+/// Используются для выбора правильных наборов коэффициентов в обратных уравнениях.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Region2Subregion {
     Region2a,
@@ -68,6 +77,7 @@ pub enum Region2Subregion {
     Region2c,
 }
 
+/// Граница энтальпии (в кДж/кг) между субрегионами 2b и 2c в зависимости от давления.
 #[instrument(level = "trace")]
 pub fn boundary_2bc_enthalpy(p: f64) -> f64 {
     let n3 = 0.12809002730136e-3;
@@ -81,6 +91,7 @@ pub fn boundary_2bc_enthalpy(p: f64) -> f64 {
     n4 + ((p - n5) / n3).sqrt()
 }
 
+/// Определение субрегиона Региона 2 по давлению и энтальпии.
 #[instrument(level = "trace")]
 pub fn determine_region2_subregion_ph(p: f64, h: f64) -> Region2Subregion {
     if p <= 4.0 {
@@ -95,6 +106,7 @@ pub fn determine_region2_subregion_ph(p: f64, h: f64) -> Region2Subregion {
     }
 }
 
+/// Определение субрегиона Региона 2 по давлению и энтропии.
 #[instrument(level = "trace")]
 pub fn determine_region2_subregion_ps(p: f64, s: f64) -> Region2Subregion {
     if p <= 4.0 {

@@ -1,13 +1,14 @@
 // File: src/domain/models/region_5.rs
 
-use crate::domain::state::{Region, WaterState};
-use crate::domain::traits::WaterRegionModel;
-use crate::domain::math::GibbsRegion;
-use crate::domain::errors::If97Error;
-use crate::domain::constants::*;
-use crate::domain::tables::{REGION5, REGION5_CP0};
+use crate::state::{Region, WaterState};
+use crate::models::traits::WaterRegionModel;
+use crate::models::math::GibbsRegion;
+use crate::errors::If97Error;
+use crate::constants::*;
+use crate::tables::{REGION5, REGION5_CP0};
 use tracing::{instrument, trace, debug, error};
 
+/// Модель Региона 5 (высокотемпературный пар, $> 1073.15 K$) по стандарту IAPWS-IF97[cite: 629].
 pub struct Region5;
 
 impl Region5 {
@@ -27,11 +28,12 @@ impl Region5 {
         powers
     }
 
-    // --- 1D решатели для обратных расчетов ---
+    /// 1D-решатель для нахождения температуры по заданным давлению и энтальпии $T(p, h)$.
+    /// Использует метод Ньютона-Рафсона для итерационного поиска[cite: 636].
     #[instrument(level = "debug", skip(self))]
     fn calc_t_ph(&self, p: f64, h_target: f64) -> Result<f64, If97Error> {
         let pi = p / REGION5_P_STAR;
-        let mut t = 1500.0;
+        let mut t = 1500.0; // Исходное начальное приближение
         debug!(p, h_target, "Старт 1D решателя Region 5 (p, h)");
 
         for iter in 0..SOLVER_MAX_ITER_1D {
@@ -43,19 +45,21 @@ impl Region5 {
             let cp_curr = -R * tau.powi(2) * gamma_tau_tau;
 
             let f = h_curr - h_target;
-
             trace!(iter, t, h_curr, f, cp_curr, "Итерация решателя (p, h)");
 
             if f.abs() < SOLVER_TOLERANCE {
                 debug!(iter, t, "Сходимость решателя (p, h) достигнута");
                 return Ok(t);
             }
+            // Шаг Ньютона с ограничением (clamping) для удержания температуры в границах региона
             t = (t - f / cp_curr).clamp(T_MAX_REGION1_2, T_MAX_REGION5);
         }
         error!("Превышен лимит итераций в решателе Region 5 (p, h).");
         Err(If97Error::ConvergenceError("Превышен лимит итераций в решателе Region 5 (p, h).".into()))
     }
 
+    /// 1D-решатель для нахождения температуры по заданным давлению и энтропии $T(p, s)$.
+    /// Использует метод Ньютона-Рафсона[cite: 644].
     #[instrument(level = "debug", skip(self))]
     fn calc_t_ps(&self, p: f64, s_target: f64) -> Result<f64, If97Error> {
         let pi = p / REGION5_P_STAR;
@@ -70,16 +74,16 @@ impl Region5 {
 
             let s_curr = R * (tau * gamma_tau - gamma);
             let cp_curr = -R * tau.powi(2) * gamma_tau_tau;
-
             let ds_dt = cp_curr / t;
-            let f = s_curr - s_target;
 
+            let f = s_curr - s_target;
             trace!(iter, t, s_curr, f, ds_dt, "Итерация решателя (p, s)");
 
             if f.abs() < SOLVER_TOLERANCE {
                 debug!(iter, t, "Сходимость решателя (p, s) достигнута");
                 return Ok(t);
             }
+            // Шаг Ньютона с ограничением
             t = (t - f / ds_dt).clamp(T_MAX_REGION1_2, T_MAX_REGION5);
         }
         error!("Превышен лимит итераций в решателе Region 5 (p, s).");

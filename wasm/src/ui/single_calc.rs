@@ -1,8 +1,8 @@
 /* File: src/ui/single_calc.rs */
 use yew::prelude::*;
 use web_sys::{HtmlInputElement, HtmlSelectElement, MouseEvent};
-use if97_core::domain::calculator::If97;
-use if97_core::domain::state::WaterState;
+use if97_core::If97;
+use if97_core::WaterState;
 use crate::types::{StateContext, AppContext, SavedPoint, SavedItem, PersistentState};
 
 fn is_same_state(s1: &WaterState, s2: &WaterState) -> bool {
@@ -17,7 +17,7 @@ fn calculate_state(mode: &str, v1_str: &str, v2_str: &str) -> Result<WaterState,
     match mode {
         "pt" => If97::pt(v1.into(), v2.into()), "ph" => If97::ph(v1.into(), v2.into()),
         "ps" => If97::ps(v1.into(), v2.into()), "px" => If97::px(v1.into(), v2.into()),
-        "rhot" => If97::rhot(v1.into(), v2.into()), _ => Err(if97_core::domain::errors::If97Error::InvalidInput("".into())),
+        "rhot" => If97::rhot(v1.into(), v2.into()), _ => Err(if97_core::errors::If97Error::InvalidInput("".into())),
     }.map_err(|_| "Вне диапазона".to_string())
 }
 

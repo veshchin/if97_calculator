@@ -1,13 +1,17 @@
 // File: src/domain/models/region_2_meta.rs
 
-use crate::domain::constants::*;
-use crate::domain::state::{Region, WaterState};
-use crate::domain::traits::WaterRegionModel;
-use crate::domain::math::GibbsRegion;
-use crate::domain::errors::If97Error;
-use crate::domain::tables::{REGION2_META, REGION2_CP0};
+use crate::constants::*;
+use crate::state::{Region, WaterState};
+use crate::models::traits::WaterRegionModel;
+use crate::models::math::GibbsRegion;
+use crate::errors::If97Error;
+use crate::tables::{REGION2_META, REGION2_CP0};
 use tracing::{instrument, trace, debug};
 
+/// Модель метастабильного пара (расширение Региона 2).
+///
+/// Применяется для расчетов переохлажденного пара (ниже кривой насыщения),
+/// который физически еще не сконденсировался.
 pub struct Region2Meta;
 
 impl Region2Meta {

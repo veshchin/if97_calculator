@@ -1,11 +1,11 @@
 // File: src/domain/models/region_3.rs
 
-use crate::domain::state::{Region, WaterState};
-use crate::domain::traits::WaterRegionModel;
-use crate::domain::math::HelmholtzRegion;
-use crate::domain::errors::If97Error;
-use crate::domain::constants::*;
-use crate::domain::tables::REGION3;
+use crate::state::{Region, WaterState};
+use crate::models::traits::WaterRegionModel;
+use crate::models::math::HelmholtzRegion;
+use crate::errors::If97Error;
+use crate::constants::*;
+use crate::tables::REGION3;
 use tracing::{instrument, trace, debug, warn, error};
 
 const P_MIN: f64 = 16.0;
@@ -18,6 +18,7 @@ const S_MIN: f64 = 3.8;
 const S_MAX: f64 = 6.4;
 const S_NODES: usize = 4;
 
+/// Сетка начальных приближений `(rho, T)` для решателя (p, h)[cite: 833].
 const GRID_PH: [[(f64, f64); 4]; 4] = [
     [(850.0, 625.0), (600.0, 635.0), (200.0, 650.0), ( 20.0, 750.0)],
     [(870.0, 635.0), (650.0, 680.0), (350.0, 710.0), ( 40.0, 800.0)],
@@ -25,6 +26,7 @@ const GRID_PH: [[(f64, f64); 4]; 4] = [
     [(920.0, 650.0), (730.0, 730.0), (550.0, 780.0), (100.0, 860.0)],
 ];
 
+/// Сетка начальных приближений `(rho, T)` для решателя (p, s)[cite: 834].
 const GRID_PS: [[(f64, f64); 4]; 4] = [
     [(850.0, 625.0), (520.0, 635.0), (150.0, 650.0), ( 25.0, 750.0)],
     [(870.0, 635.0), (620.0, 670.0), (320.0, 710.0), ( 55.0, 800.0)],
@@ -32,6 +34,9 @@ const GRID_PS: [[(f64, f64); 4]; 4] = [
     [(920.0, 650.0), (740.0, 730.0), (550.0, 790.0), (110.0, 860.0)],
 ];
 
+/// Модель Региона 3 (околокритическая зона) по стандарту IAPWS-IF97[cite: 835].
+///
+/// Использует уравнение состояния, базирующееся на энергии Гельмгольца $\phi(\delta, \tau)$.
 pub struct Region3;
 
 impl Region3 {
@@ -55,19 +60,19 @@ impl Region3 {
         powers
     }
 
+    /// 1D-решатель для нахождения плотности ($\rho$) по заданному давлению и температуре.
+    /// Использует метод Ньютона-Рафсона с механизмами защиты от спинодали и изменения фазы[cite: 842].
     #[instrument(level = "trace", skip(self))]
     fn calculate_density(&self, p: f64, t: f64, mut rho_guess: f64) -> f64 {
         let tau = T_C / t;
         let is_liquid = rho_guess > RHO_C;
         let mut delta = rho_guess / RHO_C;
-
         debug!(p, t, rho_guess, is_liquid, "Старт 1D решателя плотности (Region 3)");
 
         for iter in 0..SOLVER_MAX_ITER_DENSITY {
             let pd = self.phi_delta(delta, tau);
             let p_calc = rho_guess * R * t * delta * pd / 1000.0;
             let error = p_calc - p;
-
             trace!(iter, rho_guess, p_calc, error, "Итерация 1D решателя");
 
             if error.abs() < SOLVER_TOLERANCE_TIGHT {
@@ -78,6 +83,7 @@ impl Region3 {
             let pdd = self.phi_delta_delta(delta, tau);
             let dp_drho = R * t * (2.0 * delta * pd + delta.powi(2) * pdd) / 1000.0;
 
+            // Защита от спинодали (недопустимость отрицательной производной давления по плотности)
             if dp_drho <= 0.0 {
                 warn!(iter, dp_drho, rho_guess, "Срабатывание защиты от спинодали, выталкивание плотности");
                 rho_guess = if is_liquid { rho_guess + 20.0 } else { (rho_guess - 20.0).max(10.0) };
@@ -91,6 +97,7 @@ impl Region3 {
 
             let mut next_rho = rho_guess - step;
 
+            // Ограничение смены фазы во время итераций (жидкость <-> пар)
             if is_liquid && next_rho <= RHO_C {
                 trace!("Защита фазы: ограничение снижения плотности жидкости");
                 next_rho = RHO_C + 0.1;
@@ -117,10 +124,12 @@ impl Region3 {
         guess
     }
 
+    /// 2D-решатель Ньютона-Рафсона для определения плотности и температуры по заданным давлению и энтальпии[cite: 862].
     #[instrument(level = "trace", skip(self))]
     pub fn calculate_rho_t_ph(&self, p_target: f64, h_target: f64) -> Result<(f64, f64), If97Error> {
         let (initial_rho, initial_t) = Self::guess_rho_t_ph(p_target, h_target);
 
+        // Матрица страховочных начальных приближений при расходимости
         let fallback_guesses = [
             (initial_rho, initial_t),
             (initial_rho * 1.05, initial_t + 5.0),
@@ -158,6 +167,7 @@ impl Region3 {
                     break;
                 }
 
+                // Расчет элементов матрицы Якоби
                 let dp_drho = (R * t / 1000.0) * (2.0 * delta * phi_d + delta.powi(2) * phi_dd);
                 let dp_dt = (rho * R / 1000.0) * (delta * phi_d - delta * tau * phi_dt);
                 let dh_drho = (R * t / RHO_C) * (tau * phi_dt + phi_d + delta * phi_dd);
@@ -165,6 +175,7 @@ impl Region3 {
 
                 let det = dp_drho * dh_dt - dp_dt * dh_drho;
 
+                // Проверка вырожденности Якобиана
                 if det.abs() < SOLVER_DET_TOLERANCE {
                     warn!(iter, det, "Определитель матрицы Якоби близок к нулю");
                     break;
@@ -205,6 +216,7 @@ impl Region3 {
         guess
     }
 
+    /// 2D-решатель Ньютона-Рафсона для определения плотности и температуры по заданным давлению и энтропии[cite: 895].
     #[instrument(level = "trace", skip(self))]
     pub fn calculate_rho_t_ps(&self, p_target: f64, s_target: f64) -> Result<(f64, f64), If97Error> {
         let (initial_rho, initial_t) = Self::guess_rho_t_ps(p_target, s_target);
@@ -247,13 +259,13 @@ impl Region3 {
                     break;
                 }
 
+                // Расчет элементов матрицы Якоби
                 let dp_drho = (R * t / 1000.0) * (2.0 * delta * phi_d + delta.powi(2) * phi_dd);
                 let dp_dt = (rho * R / 1000.0) * (delta * phi_d - delta * tau * phi_dt);
                 let ds_drho = (R / RHO_C) * (tau * phi_dt - phi_d);
                 let ds_dt = (R / t) * (-tau.powi(2) * phi_tt);
 
                 let det = dp_drho * ds_dt - dp_dt * ds_drho;
-
                 if det.abs() < SOLVER_DET_TOLERANCE {
                     warn!(iter, det, "Определитель матрицы Якоби близок к нулю");
                     break;
@@ -299,11 +311,9 @@ impl Region3 {
         let r_t = R * t;
         let h = r_t * (tau * phi_tau + delta * phi_delta);
         let s = R * (tau * phi_tau - phi);
-
         let dp_drho_term = 2.0 * delta * phi_delta + delta.powi(2) * phi_delta_delta;
         let dp_dt_term = delta * phi_delta - delta * tau * phi_delta_tau;
         let cp = R * (-tau.powi(2) * phi_tau_tau + dp_dt_term.powi(2) / dp_drho_term);
-
         let w_squared = r_t * 1000.0 * (dp_drho_term - dp_dt_term.powi(2) / (tau.powi(2) * phi_tau_tau));
         let w = if w_squared > 0.0 { w_squared.sqrt() } else { f64::NAN };
         let u = h - (p * v * 1000.0);
@@ -340,11 +350,9 @@ impl Region3 {
         let p = rho * r_t * delta * phi_delta / 1000.0;
         let h = r_t * (tau * phi_tau + delta * phi_delta);
         let s = R * (tau * phi_tau - phi);
-
         let dp_drho_term = 2.0 * delta * phi_delta + delta.powi(2) * phi_delta_delta;
         let dp_dt_term = delta * phi_delta - delta * tau * phi_delta_tau;
         let cp = R * (-tau.powi(2) * phi_tau_tau + dp_dt_term.powi(2) / dp_drho_term);
-
         let w_squared = r_t * 1000.0 * (dp_drho_term - dp_dt_term.powi(2) / (tau.powi(2) * phi_tau_tau));
         let w = if w_squared > 0.0 { w_squared.sqrt() } else { f64::NAN };
         let u = h - (p * v * 1000.0);
@@ -446,6 +454,7 @@ impl WaterRegionModel for Region3 {
         let tau = T_C / t;
         let p_calc = rho * R * t * delta * self.phi_delta(delta, tau) / 1000.0;
 
+        // В случае значительной ошибки при начальном приближении жидкости — перезапуск с газа
         if (p_calc - p).abs() > 1e-4 {
             warn!(p_calc, p_target = p, "Ошибка велика. Вероятно, застряли в жидкости. Смена начального приближения на пар (rho=150.0)");
             rho = self.calculate_density(p, t, 150.0);

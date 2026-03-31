@@ -1,13 +1,16 @@
 // File: src/domain/models/region_1.rs
 
-use crate::domain::state::{Region, WaterState};
-use crate::domain::traits::WaterRegionModel;
-use crate::domain::math::GibbsRegion;
-use crate::domain::errors::If97Error;
-use crate::domain::constants::*;
-use crate::domain::tables::{REGION1, BACKWARD1_T_PH, BACKWARD1_T_PS};
+use crate::state::{Region, WaterState};
+use crate::models::traits::WaterRegionModel;
+use crate::models::math::GibbsRegion;
+use crate::errors::If97Error;
+use crate::constants::*;
+use crate::tables::{REGION1, BACKWARD1_T_PH, BACKWARD1_T_PS};
 use tracing::{instrument, trace, debug, error};
 
+/// Модель Региона 1 (жидкая вода) по стандарту IAPWS-IF97.
+///
+/// Использует фундаментальное уравнение состояния через энергию Гиббса.
 pub struct Region1;
 
 impl Region1 {
@@ -27,7 +30,8 @@ impl Region1 {
         powers
     }
 
-    // --- Обратные формулы ---
+    /// Обратное уравнение для расчета температуры $T(p, h)$ в Регионе 1.
+    /// Позволяет избежать итерационных расчетов.
     #[instrument(level = "trace")]
     fn calc_t_ph(p: f64, h: f64) -> f64 {
         let pi = p / 1.0;
@@ -41,6 +45,8 @@ impl Region1 {
         t
     }
 
+    /// Обратное уравнение для расчета температуры $T(p, s)$ в Регионе 1.
+    /// Позволяет избежать итерационных расчетов.
     #[instrument(level = "trace")]
     fn calc_t_ps(p: f64, s: f64) -> f64 {
         let pi = p / 1.0;

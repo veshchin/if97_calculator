@@ -1,18 +1,21 @@
 // File: src/domain/models/region_2.rs
 
-use crate::domain::state::{Region, WaterState};
-use crate::domain::traits::WaterRegionModel;
-use crate::domain::math::GibbsRegion;
-use crate::domain::errors::If97Error;
-use crate::domain::constants::*;
-use crate::domain::boundaries::{Region2Subregion, determine_region2_subregion_ph, determine_region2_subregion_ps};
-use crate::domain::tables::{
+use crate::state::{Region, WaterState};
+use crate::models::traits::WaterRegionModel;
+use crate::models::math::GibbsRegion;
+use crate::errors::If97Error;
+use crate::constants::*;
+use crate::models::boundaries::{Region2Subregion, determine_region2_subregion_ph, determine_region2_subregion_ps};
+use crate::tables::{
     REGION2, REGION2_CP0,
     BACKWARD2A_T_PH, BACKWARD2B_T_PH, BACKWARD2C_T_PH,
     BACKWARD2A_T_PS, BACKWARD2B_T_PS, BACKWARD2C_T_PS
 };
 use tracing::{instrument, trace, debug, error};
 
+/// Модель Региона 2 (перегретый пар) по стандарту IAPWS-IF97.
+///
+/// Использует уравнение состояния, базирующееся на энергии Гиббса.
 pub struct Region2;
 
 impl Region2 {
@@ -32,7 +35,8 @@ impl Region2 {
         powers
     }
 
-    // --- Обратные формулы ---
+    /// Обратное уравнение для расчета температуры $T(p, h)$ в субрегионах Региона 2.
+    /// Выбирает коэффициенты в зависимости от подобласти 2a, 2b или 2c.
     #[instrument(level = "trace")]
     fn calc_t_ph(p: f64, h: f64) -> f64 {
         let t = match determine_region2_subregion_ph(p, h) {
@@ -65,6 +69,8 @@ impl Region2 {
         t
     }
 
+    /// Обратное уравнение для расчета температуры $T(p, s)$ в субрегионах Региона 2.
+    /// Выбирает коэффициенты в зависимости от подобласти 2a, 2b или 2c.
     #[instrument(level = "trace")]
     fn calc_t_ps(p: f64, s: f64) -> f64 {
         let t = match determine_region2_subregion_ps(p, s) {

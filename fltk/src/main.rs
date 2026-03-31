@@ -13,7 +13,7 @@ use std::io::Write;
 use tracing::{info, error, debug, warn};
 
 // Импорты из обновленного ядра
-use if97_core::domain::calculator::If97;
+use if97_core::{If97, Region};
 use chrono::Local;
 
 use crate::state::{AppState, Message, SavedData};
@@ -76,7 +76,7 @@ fn main() {
                         continue;
                     }
 
-                    // Передаем данные в фасад If97, оборачивая f64 в типы размерностей [cite: 651]
+                    // Передаем данные в фасад If97, оборачивая f64 в типы размерностей
                     let result = match mode {
                         0 => If97::pt(val_a.into(), val_b.into()),
                         1 => If97::rhot(val_a.into(), val_b.into()),
@@ -171,11 +171,11 @@ fn main() {
                                 match res {
                                     Ok(s) => {
                                         let rn = match s.region {
-                                            if97_core::domain::state::Region::Region1 => "1",
-                                            if97_core::domain::state::Region::Region2 => "2",
-                                            if97_core::domain::state::Region::Region3 => "3",
-                                            if97_core::domain::state::Region::Region4 => "4",
-                                            if97_core::domain::state::Region::Region5 => "5",
+                                            Region::Region1 => "1",
+                                            Region::Region2 => "2",
+                                            Region::Region3 => "3",
+                                            Region::Region4 => "4",
+                                            Region::Region5 => "5",
                                             _ => "-",
                                         };
                                         let xs = if mode == 4 { format!("{:.4}", vb) } else { "-".to_string() };
@@ -247,23 +247,6 @@ fn main() {
                     }
                 }
 
-                Message::SaveLogFile => {
-                    info!("Запрос на сохранение файла логов.");
-                    let mut chooser = dialog::FileChooser::new(".", "Log Files (*.log)", dialog::FileChooserType::Create, "Сохранить отчет об ошибках");
-                    chooser.show();
-                    while chooser.shown() { app::wait(); }
-                    if let Some(mut filename) = chooser.value(1) {
-                        if !filename.ends_with(".log") { filename.push_str(".log"); }
-                        if let Ok(content) = logs_storage.lock() {
-                            if std::fs::write(&filename, content.as_str()).is_ok() {
-                                info!("Логи успешно сохранены в {}", filename);
-                                dialog::message(150, 200, "Файл логов сохранен!");
-                            } else {
-                                error!("Ошибка при сохранении логов.");
-                            }
-                        }
-                    }
-                }
                 // --- Экспорт логов с автоматическим именем ---
                 Message::SaveLogFile => {
                     // Генерируем имя вида: if97_debug_2026-03-27_20-45.log
@@ -281,10 +264,14 @@ fn main() {
                     chooser.show();
                     while chooser.shown() { app::wait(); }
 
-                    if let Some(filename) = chooser.value(1) {
+                    if let Some(mut filename) = chooser.value(1) {
+                        if !filename.ends_with(".log") { filename.push_str(".log"); }
                         if let Ok(content) = logs_storage.lock() {
                             if std::fs::write(&filename, content.as_str()).is_ok() {
+                                info!("Логи успешно сохранены в {}", filename);
                                 dialog::message(150, 200, "Логи успешно сохранены!");
+                            } else {
+                                error!("Ошибка при сохранении логов.");
                             }
                         }
                     }

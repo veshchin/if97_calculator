@@ -1,6 +1,6 @@
 // File: src/state.rs
 
-use if97_core::domain::state::WaterState;
+use if97_core::WaterState;
 use tracing::info;
 
 #[derive(Clone, Copy, PartialEq, Debug)]

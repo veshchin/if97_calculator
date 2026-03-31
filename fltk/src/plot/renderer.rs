@@ -3,10 +3,10 @@
 use plotters::prelude::*;
 use crate::state::{AppState, PlotType};
 
-use if97_core::domain::calculator::If97;
-use if97_core::domain::state::WaterState;
+use if97_core::If97;
+use if97_core::WaterState;
 // Для удобного оборачивания значений
-use if97_core::domain::units::*;
+use if97_core::units::*;
 
 fn get_palette_color(idx: usize) -> RGBColor {
     let palette = [RED, BLUE, GREEN, MAGENTA, CYAN, BLACK];

@@ -1,19 +1,23 @@
-// File: tests/tests.rs
+// File: src/tests.rs
+
+//! Набор unit-тестов для проверки корректности математических моделей
+//! и фасадного API библиотеки по контрольным точкам стандарта IAPWS-IF97.
 
 #[cfg(test)]
 mod tests {
-    use if97_core::domain::calculator::If97;
-    use if97_core::domain::state::Region;
-    use if97_core::domain::boundaries::{determine_region, boundary_2bc_enthalpy};
-    use if97_core::domain::traits::WaterRegionModel;
-    use if97_core::domain::models::region_1::Region1;
-    use if97_core::domain::models::region_2::Region2;
-    use if97_core::domain::models::region_2_meta::Region2Meta;
-    use if97_core::domain::models::region_3::Region3;
-    use if97_core::domain::models::region_5::Region5;
-    use if97_core::domain::models::region_4::{saturation_pressure, saturation_temperature};
-    use if97_core::domain::units::*;
+    // Внутри src/ мы используем пути через crate:: или super::
+    use crate::If97;
+    use crate::Region;
+    use crate::models::boundaries::{determine_region, boundary_2bc_enthalpy};
+    use crate::models::traits::WaterRegionModel;
+    use crate::models::region_1::Region1;
+    use crate::models::region_2::Region2;
+    use crate::models::region_2_meta::Region2Meta;
+    use crate::models::region_3::Region3;
+    use crate::models::region_5::Region5;
+    use crate::models::region_4::{saturation_pressure, saturation_temperature};
 
+    /// Макрос для проверки равенства чисел с плавающей точкой с заданным допуском (абсолютная погрешность).
     macro_rules! assert_approx_eq {
         ($a:expr, $b:expr, $eps:expr) => {
             let (a, b) = ($a as f64, $b as f64);
@@ -25,6 +29,10 @@ mod tests {
             );
         };
     }
+
+    // ==========================================
+    // ТЕСТЫ ОПРЕДЕЛЕНИЯ ГРАНИЦ И РЕГИОНОВ
+    // ==========================================
 
     #[test]
     fn test_determine_region() {
@@ -63,8 +71,9 @@ mod tests {
     }
 
     // ==========================================
-    // 2. ТЕСТЫ ПРЯМЫХ РАСЧЕТОВ РЕШАТЕЛЕЙ (По p и T)
+    // ТЕСТЫ ПРЯМЫХ РАСЧЕТОВ (По p и T)
     // ==========================================
+
     #[test]
     fn test_region1_verification_table() {
         let state1 = Region1.calculate_pt(3.0, 300.0).unwrap();
@@ -173,6 +182,7 @@ mod tests {
             (1.0, 453.035_632),
             (10.0, 584.149_488),
         ];
+
         for (p, expected_t) in test_points.iter() {
             let t_calc = saturation_temperature(*p);
             assert_approx_eq!(t_calc, *expected_t, 1e-6);
@@ -208,6 +218,10 @@ mod tests {
         assert_approx_eq!(state3.cp.inner(), 3.62795578, 1e-6);
         assert_approx_eq!(state3.w.inner(), 481.941819, 1e-4);
     }
+
+    // ==========================================
+    // ТЕСТЫ ОБРАТНЫХ РАСЧЕТОВ (По p-h и p-s)
+    // ==========================================
 
     #[test]
     fn test_region1_backward_t_ps() {

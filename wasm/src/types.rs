@@ -1,5 +1,5 @@
 /* File: src/types.rs */
-use if97_core::domain::state::WaterState;
+use if97_core::WaterState;
 use yew::UseStateHandle;
 use std::collections::HashSet;
 

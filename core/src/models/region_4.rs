@@ -1,14 +1,15 @@
 // File: src/domain/models/region_4.rs
 
-use crate::domain::state::{Region, WaterState};
-use crate::domain::models::region_1::Region1;
-use crate::domain::models::region_2::Region2;
-use crate::domain::models::region_3::Region3;
-use crate::domain::traits::WaterRegionModel;
-use crate::domain::errors::If97Error;
-use crate::domain::constants::*;
+use crate::state::{Region, WaterState};
+use crate::models::region_1::Region1;
+use crate::models::region_2::Region2;
+use crate::models::region_3::Region3;
+use crate::models::traits::WaterRegionModel;
+use crate::errors::If97Error;
+use crate::constants::*;
 use tracing::{instrument, trace, debug, error};
 
+/// Коэффициенты для расчета линии насыщения[cite: 741].
 const N: [f64; 10] = [
     0.11670521452767e4, -0.72421316703206e6, -0.17073846940092e2,
     0.12020824702470e5, -0.32325550322333e7, 0.14915108613530e2,
@@ -16,6 +17,7 @@ const N: [f64; 10] = [
     0.65017534844798e3
 ];
 
+/// Расчет давления насыщения $p_{sat}$ по заданной температуре $T$[cite: 742].
 #[instrument(level = "trace")]
 pub fn saturation_pressure(t: f64) -> f64 {
     let v = t + N[8] / (t - N[9]);
@@ -28,6 +30,7 @@ pub fn saturation_pressure(t: f64) -> f64 {
     p
 }
 
+/// Расчет температуры насыщения $T_{sat}$ по заданному давлению $p$[cite: 747].
 #[instrument(level = "trace")]
 pub fn saturation_temperature(p: f64) -> f64 {
     if p < P_MIN_IF97 || p > P_C + 1e-3 {
@@ -47,6 +50,10 @@ pub fn saturation_temperature(p: f64) -> f64 {
     t
 }
 
+/// Расчет свойств двухфазной смеси (Регион 4).
+///
+/// Логика использует правило аддитивности $X = X_{liq} + x \cdot (X_{vap} - X_{liq})$,
+/// определяя свойства на линиях жидкости и пара через смежные Регионы (1 и 2) или Регион 3 (около критики)[cite: 755].
 #[instrument(level = "debug")]
 pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, If97Error> {
     if !(0.0..=1.0).contains(&x) {
