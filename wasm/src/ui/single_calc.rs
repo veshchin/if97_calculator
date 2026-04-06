@@ -18,7 +18,11 @@ fn calculate_state(mode: &str, v1_str: &str, v2_str: &str) -> Result<WaterState,
         "pt" => If97::pt(v1.into(), v2.into()), "ph" => If97::ph(v1.into(), v2.into()),
         "ps" => If97::ps(v1.into(), v2.into()), "px" => If97::px(v1.into(), v2.into()),
         "rhot" => If97::rhot(v1.into(), v2.into()), _ => Err(if97_core::errors::If97Error::InvalidInput("".into())),
-    }.map_err(|_| "Вне диапазона".to_string())
+    }.map_err(|e| match e {
+        if97_core::errors::If97Error::PhaseBoundaryError(msg) => format!("Линия насыщения: {}", msg),
+        if97_core::errors::If97Error::OutOfBounds(msg) => format!("Вне диапазона: {}", msg),
+        _ => e.to_string(),
+    })
 }
 
 fn process_single_state(mut new_state: PersistentState, app_ctx: &Vec<SavedItem>, custom_name: &UseStateHandle<String>) -> PersistentState {
@@ -54,7 +58,8 @@ pub fn single_calc_tab() -> Html {
     });
 
     let on_mode_change = {
-        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
+        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone(); let save_status = save_status.clone();
         Callback::from(move |e: Event| {
             if let Some(select) = e.target_dyn_into::<HtmlSelectElement>() {
                 let mut new_state = (*state_ctx).clone(); new_state.s_mode = select.value();
@@ -64,7 +69,8 @@ pub fn single_calc_tab() -> Html {
     };
 
     let on_v1_input = {
-        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
+        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone(); let save_status = save_status.clone();
         Callback::from(move |e: InputEvent| {
             if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
                 let mut new_state = (*state_ctx).clone(); new_state.s_v1 = input.value();
@@ -74,7 +80,8 @@ pub fn single_calc_tab() -> Html {
     };
 
     let on_v2_input = {
-        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
+        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone(); let save_status = save_status.clone();
         Callback::from(move |e: InputEvent| {
             if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
                 let mut new_state = (*state_ctx).clone(); new_state.s_v2 = input.value();
@@ -91,7 +98,8 @@ pub fn single_calc_tab() -> Html {
     };
 
     let on_save = {
-        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
+        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone(); let save_status = save_status.clone();
         Callback::from(move |_| {
             if let Some(res) = &state_ctx.s_res {
                 let s_ref = &*state_ctx;
@@ -130,9 +138,11 @@ pub fn single_calc_tab() -> Html {
                     <div class="input-group">
                         <label>{"Что известно:"}</label>
                         <select class="styled-select" value={s.s_mode.clone()} onchange={on_mode_change}>
-                            <option value="pt">{"p-T (Давление и Температура)"}</option><option value="ph">{"p-h (Давление и Энтальпия)"}</option>
-                            <option value="ps">{"p-s (Давление и Энтропия)"}</option><option value="px">{"p-x (Давление и Степень сухости)"}</option>
+                            <option value="pt">{"p-T (Давление и Температура)"}</option>
                             <option value="rhot">{"rho-T (Плотность и Температура)"}</option>
+                            <option value="px">{"p-x (Давление и Степень сухости)"}</option>
+                            <option value="ps">{"p-s (Давление и Энтропия)"}</option>
+                            <option value="ph">{"p-h (Давление и Энтальпия)"}</option>
                         </select>
                     </div>
                     <div class="input-row">
@@ -192,7 +202,8 @@ pub fn single_calc_tab() -> Html {
                             })
                         };
                         let on_delete = {
-                            let app_ctx = app_ctx.clone(); let name = p.name.clone();
+                            let app_ctx = app_ctx.clone();
+                            let name = p.name.clone();
                             Callback::from(move |e: MouseEvent| {
                                 e.stop_propagation();
                                 let mut items = (*app_ctx).clone();

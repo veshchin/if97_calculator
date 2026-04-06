@@ -39,7 +39,7 @@ pub struct ThermodynamicPoint {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ChartType { Ts, Hs, Ph, Tv, Pv, Pt }
+pub enum ChartType { Ts, Hs, Ph, Tv, Pv, Pt, Ps, Th }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PersistentState {

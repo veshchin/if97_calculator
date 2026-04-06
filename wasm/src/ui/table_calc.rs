@@ -37,7 +37,11 @@ fn calculate_table(mode: &str, input: &str) -> Vec<Result<WaterState, String>> {
                     "ps" => If97::ps(v1.into(), v2.into()), "px" => If97::px(v1.into(), v2.into()),
                     "rhot" => If97::rhot(v1.into(), v2.into()), _ => Err(if97_core::errors::If97Error::InvalidInput("".into())),
                 };
-                results.push(res.map_err(|_| "Вне диапазона".to_string()));
+                results.push(res.map_err(|e| match e {
+                    if97_core::errors::If97Error::PhaseBoundaryError(msg) => format!("Линия насыщения: {}", msg),
+                    if97_core::errors::If97Error::OutOfBounds(msg) => format!("Вне диапазона: {}", msg),
+                    _ => e.to_string(),
+                }));
             } else { results.push(Err("Ошибка чтения".to_string())); }
         } else { results.push(Err("Мало колонок".to_string())); }
     }
@@ -71,7 +75,8 @@ pub fn table_calc_tab() -> Html {
     let save_status = use_state(|| Option::<String>::None);
 
     let on_mode = {
-        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
+        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone(); let save_status = save_status.clone();
         Callback::from(move |e: Event| {
             if let Some(select) = e.target_dyn_into::<HtmlSelectElement>() {
                 let mut new_s = (*state_ctx).clone(); new_s.t_mode = select.value();
@@ -81,7 +86,8 @@ pub fn table_calc_tab() -> Html {
     };
 
     let on_input = {
-        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
+        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone(); let save_status = save_status.clone();
         Callback::from(move |e: InputEvent| {
             if let Some(textarea) = e.target_dyn_into::<HtmlTextAreaElement>() {
                 let mut new_s = (*state_ctx).clone(); new_s.t_input = textarea.value();
@@ -98,7 +104,8 @@ pub fn table_calc_tab() -> Html {
     };
 
     let on_load_file = {
-        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
+        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone(); let save_status = save_status.clone();
         Callback::from(move |_| {
             let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
             wasm_bindgen_futures::spawn_local(async move {
@@ -133,7 +140,8 @@ pub fn table_calc_tab() -> Html {
     };
 
     let on_save_to_plots = {
-        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone(); let custom_name = custom_name.clone(); let save_status = save_status.clone();
+        let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone(); let save_status = save_status.clone();
         Callback::from(move |_| {
             let s = &*state_ctx; let mut items = (*app_ctx).clone();
             let valid_states: Vec<WaterState> = s.t_res.iter().filter_map(|r| r.clone().ok()).collect();
@@ -169,7 +177,6 @@ pub fn table_calc_tab() -> Html {
 
     let valid_states: Vec<WaterState> = s.t_res.iter().filter_map(|r| r.clone().ok()).collect();
     let has_valid_results = !valid_states.is_empty();
-
     let is_already_saved = if has_valid_results {
         app_ctx.iter().any(|i| if let SavedItem::Table(t) = i { is_same_table(&t.states, &valid_states) } else { false })
     } else { false };
@@ -187,7 +194,11 @@ pub fn table_calc_tab() -> Html {
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <label style="font-weight: 500;">{"Режим:"}</label>
                         <select class="styled-select" value={s.t_mode.clone()} onchange={on_mode} style="min-width: 150px;">
-                            <option value="pt">{"p-T"}</option><option value="ph">{"p-h"}</option><option value="ps">{"p-s"}</option><option value="px">{"p-x"}</option><option value="rhot">{"rho-T"}</option>
+                            <option value="pt">{"p-T"}</option>
+                            <option value="rhot">{"rho-T"}</option>
+                            <option value="px">{"p-x"}</option>
+                            <option value="ps">{"p-s"}</option>
+                            <option value="ph">{"p-h"}</option>
                         </select>
                     </div>
                     <button class="btn btn-outline" onclick={on_load_file}>{"📂 Открыть"}</button>
@@ -237,7 +248,8 @@ pub fn table_calc_tab() -> Html {
                             })
                         };
                         let on_delete = {
-                            let app_ctx = app_ctx.clone(); let name = t.name.clone();
+                            let app_ctx = app_ctx.clone();
+                            let name = t.name.clone();
                             Callback::from(move |e: MouseEvent| {
                                 e.stop_propagation();
                                 let mut items = (*app_ctx).clone();

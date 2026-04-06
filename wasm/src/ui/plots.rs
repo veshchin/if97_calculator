@@ -58,6 +58,7 @@ fn get_axes(ct: ChartType, swap: bool) -> (AxisVar, AxisVar) {
         ChartType::Ts => (AxisVar::S, AxisVar::T), ChartType::Hs => (AxisVar::S, AxisVar::H),
         ChartType::Ph => (AxisVar::H, AxisVar::P), ChartType::Tv => (AxisVar::V, AxisVar::T),
         ChartType::Pv => (AxisVar::V, AxisVar::P), ChartType::Pt => (AxisVar::T, AxisVar::P),
+        ChartType::Ps => (AxisVar::S, AxisVar::P), ChartType::Th => (AxisVar::H, AxisVar::T),
     };
     if swap { std::mem::swap(&mut x, &mut y); }
     (x, y)
@@ -70,7 +71,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let s = &*state_ctx;
 
     let canvas_ref = use_node_ref();
-    let chart_type = use_state(|| ChartType::Ts);
+    let chart_type = use_state(|| ChartType::Pt); // Теперь по умолчанию p-T
     let swap_axes = use_state(|| false);
     let draw_lines = use_state(|| false);
     let show_dome = use_state(|| true);
@@ -100,6 +101,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                             ChartType::Ts => (state.s.inner(), state.t.inner()), ChartType::Hs => (state.s.inner(), state.h.inner()),
                             ChartType::Ph => (state.h.inner(), state.p.inner()), ChartType::Tv => (state.v.inner(), state.t.inner()),
                             ChartType::Pv => (state.v.inner(), state.p.inner()), ChartType::Pt => (state.t.inner(), state.p.inner()),
+                            ChartType::Ps => (state.s.inner(), state.p.inner()), ChartType::Th => (state.h.inner(), state.t.inner()),
                         };
                         if *swap { std::mem::swap(&mut x, &mut y); }
                         (x, y)
@@ -138,7 +140,17 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         let chart_type = chart_type.clone();
         Callback::from(move |e: Event| {
             if let Some(select) = e.target_dyn_into::<HtmlSelectElement>() {
-                let ct = match select.value().as_str() { "ts" => ChartType::Ts, "hs" => ChartType::Hs, "ph" => ChartType::Ph, "tv" => ChartType::Tv, "pv" => ChartType::Pv, "pt" => ChartType::Pt, _ => ChartType::Ts };
+                let ct = match select.value().as_str() {
+                    "pt" => ChartType::Pt,
+                    "pv" => ChartType::Pv,
+                    "ph" => ChartType::Ph,
+                    "ps" => ChartType::Ps,
+                    "tv" => ChartType::Tv,
+                    "ts" => ChartType::Ts,
+                    "th" => ChartType::Th,
+                    "hs" => ChartType::Hs,
+                    _ => ChartType::Pt
+                };
                 chart_type.set(ct);
             }
         })
@@ -252,12 +264,14 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
 
             <div class="top-toolbar" style="display: flex; flex-wrap: wrap; gap: 15px; padding: 10px 15px; background: var(--card-bg); border-bottom: 1px solid var(--border); align-items: center; flex-shrink: 0; z-index: 5;">
                 <select class="styled-select" onchange={on_chart_type_change} style="padding: 6px 10px;">
-                    <option value="ts" selected={*chart_type == ChartType::Ts}>{ "T-s Диаграмма" }</option>
-                    <option value="hs" selected={*chart_type == ChartType::Hs}>{ "h-s Диаграмма" }</option>
+                    <option value="pt" selected={*chart_type == ChartType::Pt}>{ "p-T Диаграмма" }</option>
+                    <option value="pv" selected={*chart_type == ChartType::Pv}>{ "p-v Диаграмма" }</option>
+                    <option value="ps" selected={*chart_type == ChartType::Ps}>{ "p-s Диаграмма" }</option>
                     <option value="ph" selected={*chart_type == ChartType::Ph}>{ "p-h Диаграмма" }</option>
                     <option value="tv" selected={*chart_type == ChartType::Tv}>{ "T-v Диаграмма" }</option>
-                    <option value="pv" selected={*chart_type == ChartType::Pv}>{ "p-v Диаграмма" }</option>
-                    <option value="pt" selected={*chart_type == ChartType::Pt}>{ "p-T Диаграмма" }</option>
+                    <option value="ts" selected={*chart_type == ChartType::Ts}>{ "T-s Диаграмма" }</option>
+                    <option value="th" selected={*chart_type == ChartType::Th}>{ "T-h Диаграмма" }</option>
+                    <option value="hs" selected={*chart_type == ChartType::Hs}>{ "h-s Диаграмма" }</option>
                 </select>
 
                 <div style="display: flex; gap: 10px; border-right: 1px solid var(--border); padding-right: 15px;">

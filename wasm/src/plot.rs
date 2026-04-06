@@ -99,6 +99,7 @@ pub fn draw_diagram(canvas_id: &str, opts: &ChartOptions, series_list: Vec<PlotS
                             ChartType::Ts => (state.s.inner(), state.t.inner()), ChartType::Hs => (state.s.inner(), state.h.inner()),
                             ChartType::Ph => (state.h.inner(), state.p.inner()), ChartType::Tv => (state.v.inner(), state.t.inner()),
                             ChartType::Pv => (state.v.inner(), state.p.inner()), ChartType::Pt => (state.t.inner(), state.p.inner()),
+                            ChartType::Ps => (state.s.inner(), state.p.inner()), ChartType::Th => (state.h.inner(), state.t.inner()),
                         };
                         if opts.swap_axes { std::mem::swap(&mut x, &mut y); }
                         (x, y)
