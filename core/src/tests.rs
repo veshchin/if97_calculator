@@ -300,4 +300,55 @@ mod tests {
         assert_approx_eq!(Region5.calculate_ps(30.0, 7.72970133).unwrap().t.inner(), 1500.0, 1e-4);
         assert_approx_eq!(Region5.calculate_ps(30.0, 8.53640523).unwrap().t.inner(), 2000.0, 1e-4);
     }
+
+    // ==========================================
+    // ТЕСТЫ НЕПРЕРЫВНОСТИ РАССЧËТОВ
+    // ==========================================
+
+    #[test]
+    fn test_continuity_boundary_b23() {
+        let t = 750.0;
+        let p_exact = crate::models::boundaries::b23_pressure(t);
+        let eps = 1e-6;
+
+        let state_below = If97::pt((p_exact - eps).into(), t.into()).unwrap();
+        let state_exact = If97::pt(p_exact.into(), t.into()).unwrap();
+        let state_above = If97::pt((p_exact + eps).into(), t.into()).unwrap();
+
+        assert_eq!(state_below.region, Region::Region2);
+        assert_eq!(state_above.region, Region::Region3);
+
+        let tol = 0.2;
+
+        assert_approx_eq!(state_below.v.inner(), state_exact.v.inner(), tol);
+        assert_approx_eq!(state_above.v.inner(), state_exact.v.inner(), tol);
+
+        assert_approx_eq!(state_below.h.inner(), state_exact.h.inner(), tol);
+        assert_approx_eq!(state_above.h.inner(), state_exact.h.inner(), tol);
+
+        assert_approx_eq!(state_below.s.inner(), state_exact.s.inner(), tol);
+        assert_approx_eq!(state_above.s.inner(), state_exact.s.inner(), tol);
+    }
+
+    #[test]
+    fn test_continuity_boundary_1_3() {
+        let t_exact = 623.15;
+        let p = 50.0;
+        let eps = 1e-6;
+
+        let state_below = If97::pt(p.into(), (t_exact - eps).into()).unwrap();
+        let state_exact = If97::pt(p.into(), t_exact.into()).unwrap();
+        let state_above = If97::pt(p.into(), (t_exact + eps).into()).unwrap();
+
+        assert_eq!(state_below.region, Region::Region1);
+        assert_eq!(state_above.region, Region::Region3);
+
+        let tol = 0.2;
+
+        assert_approx_eq!(state_below.v.inner(), state_exact.v.inner(), tol);
+        assert_approx_eq!(state_above.v.inner(), state_exact.v.inner(), tol);
+
+        assert_approx_eq!(state_below.h.inner(), state_exact.h.inner(), tol);
+        assert_approx_eq!(state_above.h.inner(), state_exact.h.inner(), tol);
+    }
 }
