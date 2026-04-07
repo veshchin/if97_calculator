@@ -80,12 +80,32 @@ pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, If97Error> {
         )
     };
 
-    let v = state_liquid.v.inner() + x * (state_vapor.v.inner() - state_liquid.v.inner());
+    let v_liq = state_liquid.v.inner();
+    let v_vap = state_vapor.v.inner();
+
+    let v = v_liq + x * (v_vap - v_liq);
     let h = state_liquid.h.inner() + x * (state_vapor.h.inner() - state_liquid.h.inner());
     let s = state_liquid.s.inner() + x * (state_vapor.s.inner() - state_liquid.s.inner());
     let u = h - (p * v * 1000.0);
 
-    debug!(v, h, s, t_sat, u, "Успешный расчет двухфазной области Region4");
+    // Расчет скорости звука в смеси по формуле Вуда (замороженная модель)
+    let w_liq = state_liquid.w.inner();
+    let w_vap = state_vapor.w.inner();
+    let w_mix = if x == 0.0 {
+        w_liq
+    } else if x == 1.0 {
+        w_vap
+    } else if w_liq.is_finite() && w_vap.is_finite() {
+        // Формула Вуда через массовые доли и удельные объемы
+        v / (x * (v_vap / w_vap).powi(2) + (1.0 - x) * (v_liq / w_liq).powi(2)).sqrt()
+    } else {
+        f64::NAN
+    };
+
+    // Теплоемкость при кипении стремится к бесконечности
+    let cp_mix = f64::INFINITY;
+
+    debug!(v, h, s, t_sat, u, w_mix, cp_mix, "Успешный расчет двухфазной области Region4");
     Ok(WaterState {
         p: p.into(),
         t: t_sat.into(),
@@ -93,8 +113,8 @@ pub fn calculate_two_phase(p: f64, x: f64) -> Result<WaterState, If97Error> {
         rho: (1.0 / v).into(),
         h: h.into(),
         s: s.into(),
-        cp: f64::NAN.into(),
-        w: f64::NAN.into(),
+        cp: cp_mix.into(),
+        w: w_mix.into(),
         u: u.into(),
         region: Region::Region4
     })

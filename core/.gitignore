@@ -1,0 +1,37 @@
+# Rust & Cargo
+target/
+**/*.rs.bk
+
+# Yew / Trunk (сборка фронтенда)
+dist/
+
+# RustRover / JetBrains IDEs
+.idea/
+*.iml
+out/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Логи и временные файлы
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# Файлы кэша и конфигурации среды
+.env
+.env.*wasm/src-tauri/gen/
+
+*gptree*
+*icon*
+*.png
+*.csv
+*gen*
+
+/fltk

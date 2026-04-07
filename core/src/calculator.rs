@@ -284,6 +284,13 @@ impl If97 {
             return Err(If97Error::InvalidInput(String::from("Invalid input")));
         }
 
+        // Защита от передачи мусорных температур в формулы насыщения
+        if t_val < 273.15 || t_val > 2273.15 {
+            return Err(If97Error::OutOfBounds(String::from("Temperature out of bounds")));
+        }
+
+        let is_supercritical = t_val > 647.096;
+
         if (273.15..=647.096).contains(&t_val) {
             let p_sat = saturation_pressure(t_val);
             if let Ok(liq) = calculate_two_phase(p_sat, 0.0) {
@@ -291,9 +298,15 @@ impl If97 {
                     let rho_liq = liq.rho.inner();
                     let rho_vap = vap.rho.inner();
 
-                    if rho_val <= rho_liq && rho_val >= rho_vap {
-                        error!("Точка лежит в двухфазной области (на линии насыщения).");
-                        return Err(If97Error::PhaseBoundaryError(String::from("Точка лежит в двухфазной области (на линии насыщения). Используйте px(p, x).")));
+                    if rho_val <= rho_liq + 1e-10 && rho_val >= rho_vap - 1e-10 {
+                        let v_val = 1.0 / rho_val;
+                        let v_liq = liq.v.inner();
+                        let v_vap = vap.v.inner();
+
+                        let x = (v_val - v_liq) / (v_vap - v_liq);
+                        let x_clamped = x.clamp(0.0, 1.0);
+
+                        return calculate_two_phase(p_sat, x_clamped);
                     }
                 }
             }
@@ -309,12 +322,24 @@ impl If97 {
         }
 
         debug!(rho = rho_val, t = t_val, "Запуск 1D решателя (метод секущих) для rhot");
+        let mut p_max_for_t = if t_val > 1073.15 { 50.0 } else { P_MAX_IF97 };
+        let mut p_min_safe = P_MIN_IF97.max(0.000611657) + 1e-9;
 
-        let p_max_for_t = if t_val > 1073.15 { 50.0 } else { P_MAX_IF97 };
-        let p_min_safe = P_MIN_IF97.max(0.000611657) + 1e-9;
-
-        let is_supercritical = t_val > 647.096;
         let is_liquid_target = rho_val > 322.0;
+
+        if !is_supercritical {
+            let p_sat = saturation_pressure(t_val);
+            if is_liquid_target {
+                p_min_safe = p_min_safe.max(p_sat + 1e-8);
+            } else {
+                p_max_for_t = p_max_for_t.min(p_sat - 1e-8);
+            }
+        }
+
+        // ВАЖНО: Предотвращаем Panic в clamp() если диапазон сузился в минус из-за невозможных параметров
+        if p_max_for_t <= p_min_safe {
+            return Err(If97Error::OutOfBounds(String::from("No valid pressure range")));
+        }
 
         let (mut p0, mut p1) = if is_liquid_target && !is_supercritical {
             (p_max_for_t, p_max_for_t * 0.9)
@@ -362,7 +387,6 @@ impl If97 {
             }
 
             let f1 = current_rho - rho_val;
-
             if f1.abs() < 1e-11 || (f1 / rho_val).abs() < 1e-12 {
                 debug!(iter, p_final = p1, "Сходимость решателя rhot достигнута по плотности");
                 return Ok(state);
@@ -377,10 +401,11 @@ impl If97 {
 
             let step = -f1 * dp / df;
             let max_step = (p_max_for_t - p_min_safe) * 0.8;
+
+            // Теперь max_step гарантированно > 0, и clamp не убьет WASM-поток
             let safe_step = step.clamp(-max_step, max_step);
 
             let p_new = (p1 + safe_step).clamp(p_min_safe, p_max_for_t);
-
             if (p_new - p1).abs() < 1e-11 || (p_new - p1).abs() / p1 < 1e-10 {
                 debug!(iter, p_final = p_new, "Сходимость решателя rhot достигнута по давлению");
                 return Self::pt(MegaPascal(p_new), t);

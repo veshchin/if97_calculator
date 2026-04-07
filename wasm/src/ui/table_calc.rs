@@ -328,14 +328,53 @@ pub fn table_calc_tab() -> Html {
                 </div>
 
                 // ТАБЛИЦА РЕЗУЛЬТАТОВ И ВВОД
+                // ТАБЛИЦА РЕЗУЛЬТАТОВ И ВВОД
                 <div class="split-view" style="flex-grow: 1;">
-                    <div class="split-left" style="width: 20%;"><textarea class="raw-data-area" oninput={on_input} value={s.t_input.clone()} placeholder="Ввод данных..."></textarea></div>
+                    <div class="split-left" style="width: 20%;">
+                        <textarea class="raw-data-area" oninput={on_input} value={s.t_input.clone()} placeholder="Ввод данных..."></textarea>
+                    </div>
                     <div class="split-right" style="width: 80%; overflow-x: auto;">
                         <div class="table-container">
                             <table class="data-table" style="white-space: nowrap;">
-                                <thead><tr><th style="width: 40px;">{"#"}</th><th>{"p (MPa)"}</th><th>{"T (K)"}</th><th>{"v (m³/kg)"}</th><th>{"rho"}</th><th>{"h (kJ/kg)"}</th><th>{"s (kJ/kgK)"}</th><th>{"Region"}</th></tr></thead>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px;">{"#"}</th>
+                                        <th>{"p (MPa)"}</th>
+                                        <th>{"T (K)"}</th>
+                                        <th>{"v (m³/kg)"}</th>
+                                        <th>{"rho (kg/m³)"}</th>
+                                        <th>{"h (kJ/kg)"}</th>
+                                        <th>{"s (kJ/kgK)"}</th>
+                                        <th>{"u (kJ/kg)"}</th>
+                                        <th>{"cp (kJ/kgK)"}</th>
+                                        <th>{"w (m/s)"}</th>
+                                        <th>{"Region"}</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
-                                    { for s.t_res.iter().enumerate().map(|(i, r)| match r { Ok(st) => html! { <tr><td>{i + 1}</td><td>{format!("{:.4}", st.p.inner())}</td><td>{format!("{:.2}", st.t.inner())}</td><td>{format!("{:.6}", st.v.inner())}</td><td>{format!("{:.4}", st.rho.inner())}</td><td>{format!("{:.4}", st.h.inner())}</td><td>{format!("{:.4}", st.s.inner())}</td><td>{format!("{:?}", st.region)}</td></tr> }, Err(e) => html! { <tr><td>{i + 1}</td><td colspan="7">{format!("Ошибка: {}", e)}</td></tr> } }) }
+                                    { for s.t_res.iter().enumerate().map(|(i, r)| match r {
+                                        Ok(st) => html! {
+                                            <tr>
+                                                <td>{i + 1}</td>
+                                                <td>{format!("{:.4}", st.p.inner())}</td>
+                                                <td>{format!("{:.2}", st.t.inner())}</td>
+                                                <td>{format!("{:.6}", st.v.inner())}</td>
+                                                <td>{format!("{:.4}", st.rho.inner())}</td>
+                                                <td>{format!("{:.4}", st.h.inner())}</td>
+                                                <td>{format!("{:.4}", st.s.inner())}</td>
+                                                <td>{format!("{:.4}", st.u.inner())}</td>
+                                                <td>{format!("{:.4}", st.cp.inner())}</td>
+                                                <td>{format!("{:.2}", st.w.inner())}</td>
+                                                <td>{format!("{:?}", st.region)}</td>
+                                            </tr>
+                                        },
+                                        Err(e) => html! {
+                                            <tr>
+                                                <td>{i + 1}</td>
+                                                <td colspan="10">{format!("Ошибка: {}", e)}</td>
+                                            </tr>
+                                        }
+                                    }) }
                                 </tbody>
                             </table>
                         </div>

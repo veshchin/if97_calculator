@@ -2144,7 +2144,7 @@ dependencies = [
 
 [[package]]
 name = "if97_calculator_web"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "gloo-timers 0.3.0",
  "if97_core",
@@ -2163,7 +2163,7 @@ dependencies = [
 
 [[package]]
 name = "if97_core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "csv",
  "serde",
