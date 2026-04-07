@@ -1,4 +1,8 @@
-// File: src/calculator.rs
+//! Публичный фасад ядра.
+//!
+//! Модуль не содержит математику напрямую. Его задача — предоставить стабильный API,
+//! который переводит входные пары параметров в запросы `engine::CalculationRequest`
+//! и возвращает агрегированное `WaterState`.
 
 use crate::domain::errors::If97Error;
 use crate::domain::state::WaterState;

@@ -1,3 +1,10 @@
+//! Оркестратор вычислений.
+//!
+//! `engine` принимает формализованный запрос, валидирует входные данные,
+//! определяет подходящий workflow и запускает соответствующий вычислительный сценарий.
+//! Внутри этого слоя нет пользовательского API; он служит связующим звеном
+//! между фасадом `calculator` и реализацией регионов/топологии.
+
 mod classifier;
 mod executor;
 mod plans;
@@ -10,6 +17,7 @@ use crate::domain::state::WaterState;
 
 pub use request::CalculationRequest;
 
+/// Централизованная точка входа во внутренние workflow ядра.
 pub struct CalculationEngine;
 
 impl CalculationEngine {

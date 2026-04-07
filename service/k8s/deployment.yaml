@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: if97-calculator-service
+  labels:
+    app.kubernetes.io/name: if97-calculator-service
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: if97-calculator-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: if97-calculator-service
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/veshchin/if97_calculator_service:0.1.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: IF97_SERVICE_ADDR
+              value: 0.0.0.0:8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi

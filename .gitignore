@@ -1,36 +1,49 @@
-# Rust & Cargo
-target/
+# Rust
+/target/
 **/*.rs.bk
 
-# Yew / Trunk (сборка фронтенда)
-dist/
+# Cargo local config
+.cargo/
 
-# RustRover / JetBrains IDEs
+# Web / Tauri build output
+/dist/
+/wasm/dist/
+/wasm/.trunk/
+/wasm/node_modules/
+/wasm/src-tauri/gen/
+
+# Service / container temp output
+*.tar
+*.tgz
+
+# IDEs
 .idea/
 *.iml
-out/
 .zed/
+.vscode/
+out/
 
-# macOS
+# OS junk
 .DS_Store
 .AppleDouble
 .LSOverride
-Icon
+Thumbs.db
+Desktop.ini
 ._*
 
-# Логи и временные файлы
+# Logs and temporary files
 *.log
 *.tmp
+*.temp
 *.bak
 *.swp
+*.swo
 *~
 
-# Файлы кэша и конфигурации среды
+# Env files
 .env
-.env.*wasm/src-tauri/gen/
+.env.*
 
-#*gptree*
-#*icon*
-#*.png
-#*.csv
-#*gen*
+# Python caches if used for tooling
+__pycache__/
+*.pyc

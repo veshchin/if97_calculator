@@ -5,4 +5,4 @@ pub mod state;
 pub mod ui;
 
 // Переэкспортируем важные типы для удобства доступа
-pub use state::{AppState, Message, PlotType, SavedData};
+pub use state::{AppState, Message, SavedData};

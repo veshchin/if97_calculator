@@ -1,22 +1,69 @@
-// File: src/ui/plot_tab.rs
-
 use crate::plot::renderer::render_plot_to_buffer;
-use crate::state::{AppState, Message, PlotType};
+use crate::state::{AppState, Message};
 use fltk::app::Sender;
 use fltk::{
-    button::*, enums::*, frame::*, group::*, image::RgbImage, input::*, menu::*, prelude::*,
+    button::*,
+    enums::*,
+    frame::*,
+    group::*,
+    image::RgbImage,
+    input::*,
+    menu::*,
+    prelude::*,
 };
-use tracing::{debug, info};
+use if97_app_api::DiagramKind;
 
+fn choice_index_to_plot(index: i32) -> DiagramKind {
+    match index {
+        1 => DiagramKind::Pv,
+        2 => DiagramKind::Ps,
+        3 => DiagramKind::Ph,
+        4 => DiagramKind::Tv,
+        5 => DiagramKind::Ts,
+        6 => DiagramKind::Th,
+        7 => DiagramKind::Hs,
+        _ => DiagramKind::Pt,
+    }
+}
+
+fn plot_to_choice_index(kind: DiagramKind) -> i32 {
+    match kind {
+        DiagramKind::Pt => 0,
+        DiagramKind::Pv => 1,
+        DiagramKind::Ps => 2,
+        DiagramKind::Ph => 3,
+        DiagramKind::Tv => 4,
+        DiagramKind::Ts => 5,
+        DiagramKind::Th => 6,
+        DiagramKind::Hs => 7,
+    }
+}
+
+fn axis_labels(kind: DiagramKind, swap_axes: bool) -> (&'static str, &'static str) {
+    let (x, y) = match kind {
+        DiagramKind::Pt => ("X: Температура T", "Y: Давление p"),
+        DiagramKind::Pv => ("X: Удельный объем v", "Y: Давление p"),
+        DiagramKind::Ps => ("X: Энтропия s", "Y: Давление p"),
+        DiagramKind::Ph => ("X: Энтальпия h", "Y: Давление p"),
+        DiagramKind::Tv => ("X: Удельный объем v", "Y: Температура T"),
+        DiagramKind::Ts => ("X: Энтропия s", "Y: Температура T"),
+        DiagramKind::Th => ("X: Энтальпия h", "Y: Температура T"),
+        DiagramKind::Hs => ("X: Энтропия s", "Y: Энтальпия h"),
+    };
+    if swap_axes { (y, x) } else { (x, y) }
+}
+
+#[allow(dead_code)]
 pub struct PlotTab {
     pub group: Group,
     pub choice_plot_type: Choice,
     pub plot_frame: Frame,
-    pub inp_val_min: Input,
-    pub inp_val_max: Input,
-    pub inp_t_min: Input,
-    pub inp_t_max: Input,
-    pub btn_apply_limits: Button,
+    pub inp_x_min: Input,
+    pub inp_x_max: Input,
+    pub inp_y_min: Input,
+    pub inp_y_max: Input,
+    pub axis_x_label: Frame,
+    pub axis_y_label: Frame,
 }
 
 impl PlotTab {
@@ -25,7 +72,7 @@ impl PlotTab {
 
         let mut choice_plot_type = Choice::new(20, 45, 180, 30, "Тип диаграммы:");
         choice_plot_type.set_align(Align::TopLeft);
-        choice_plot_type.add_choice("p-T Диаграмма|rho-T Диаграмма|v-T Диаграмма");
+        choice_plot_type.add_choice("p-T|p-v|p-s|p-h|T-v|T-s|T-h|h-s");
         choice_plot_type.set_value(0);
 
         let mut btn_select_data = Button::new(210, 45, 140, 30, "Выбрать данные");
@@ -42,21 +89,26 @@ impl PlotTab {
         let mut check_autoscale = CheckButton::new(20, 85, 120, 30, "Автомасштаб");
         check_autoscale.set_value(true);
 
-        let mut inp_val_min = Input::new(250, 85, 60, 30, "p, МПа от:");
-        let mut inp_val_max = Input::new(350, 85, 60, 30, "до:");
-        let mut inp_t_min = Input::new(480, 85, 60, 30, "T, К от:");
-        let mut inp_t_max = Input::new(570, 85, 60, 30, "до:");
+        let mut axis_x_label = Frame::new(155, 86, 110, 24, "X: Температура T");
+        axis_x_label.set_align(Align::Left | Align::Inside);
+        let mut inp_x_min = Input::new(270, 85, 70, 30, "");
+        let mut inp_x_max = Input::new(350, 85, 70, 30, "");
 
-        inp_val_min.set_value("0.0");
-        inp_val_max.set_value("100.0");
-        inp_t_min.set_value("273.15");
-        inp_t_max.set_value("1000.0");
-        inp_val_min.deactivate();
-        inp_val_max.deactivate();
-        inp_t_min.deactivate();
-        inp_t_max.deactivate();
+        let mut axis_y_label = Frame::new(435, 86, 110, 24, "Y: Давление p");
+        axis_y_label.set_align(Align::Left | Align::Inside);
+        let mut inp_y_min = Input::new(550, 85, 70, 30, "");
+        let mut inp_y_max = Input::new(630, 85, 70, 30, "");
 
-        let mut btn_apply_limits = Button::new(650, 85, 150, 30, "Применить масштаб");
+        inp_x_min.set_value("273.15");
+        inp_x_max.set_value("1000.0");
+        inp_y_min.set_value("0.001");
+        inp_y_max.set_value("100.0");
+        inp_x_min.deactivate();
+        inp_x_max.deactivate();
+        inp_y_min.deactivate();
+        inp_y_max.deactivate();
+
+        let mut btn_apply_limits = Button::new(720, 85, 150, 30, "Применить масштаб");
         btn_apply_limits.deactivate();
 
         let mut plot_frame = Frame::new(20, 130, 1000, 515, "");
@@ -65,28 +117,9 @@ impl PlotTab {
 
         group.end();
 
-        // --- Коллбеки ---
         choice_plot_type.set_callback({
             let s = sender.clone();
-            let mut ivm = inp_val_min.clone();
-            move |c| {
-                let pt = match c.value() {
-                    0 => {
-                        ivm.set_label("p, МПа от:");
-                        PlotType::PT
-                    }
-                    1 => {
-                        ivm.set_label("rho, кг/м3 от:");
-                        PlotType::RhoT
-                    }
-                    _ => {
-                        ivm.set_label("v, м3/кг от:");
-                        PlotType::VT
-                    }
-                };
-                info!("Смена типа графика на {:?}", pt);
-                s.send(Message::ChangePlotType(pt));
-            }
+            move |c| s.send(Message::ChangePlotType(choice_index_to_plot(c.value())))
         });
 
         check_dome.set_callback({
@@ -100,25 +133,24 @@ impl PlotTab {
 
         check_autoscale.set_callback({
             let s = sender.clone();
-            let mut iv_min = inp_val_min.clone();
-            let mut iv_max = inp_val_max.clone();
-            let mut it_min = inp_t_min.clone();
-            let mut it_max = inp_t_max.clone();
+            let mut x_min = inp_x_min.clone();
+            let mut x_max = inp_x_max.clone();
+            let mut y_min = inp_y_min.clone();
+            let mut y_max = inp_y_max.clone();
             let mut btn_apply = btn_apply_limits.clone();
             move |c| {
                 let auto = c.value();
-                debug!("Автомасштаб установлен в {}", auto);
                 if auto {
-                    iv_min.deactivate();
-                    iv_max.deactivate();
-                    it_min.deactivate();
-                    it_max.deactivate();
+                    x_min.deactivate();
+                    x_max.deactivate();
+                    y_min.deactivate();
+                    y_max.deactivate();
                     btn_apply.deactivate();
                 } else {
-                    iv_min.activate();
-                    iv_max.activate();
-                    it_min.activate();
-                    it_max.activate();
+                    x_min.activate();
+                    x_max.activate();
+                    y_min.activate();
+                    y_max.activate();
                     btn_apply.activate();
                 }
                 s.send(Message::SetAutoscale(auto));
@@ -127,20 +159,17 @@ impl PlotTab {
 
         btn_apply_limits.set_callback({
             let s = sender.clone();
-            let ivm = inp_val_min.clone();
-            let ivx = inp_val_max.clone();
-            let itm = inp_t_min.clone();
-            let itx = inp_t_max.clone();
+            let x_min = inp_x_min.clone();
+            let x_max = inp_x_max.clone();
+            let y_min = inp_y_min.clone();
+            let y_max = inp_y_max.clone();
             move |_| {
-                let vmin = ivm.value().replace(',', ".").parse().unwrap_or(0.0);
-                let vmax = ivx.value().replace(',', ".").parse().unwrap_or(100.0);
-                let tmin = itm.value().replace(',', ".").parse().unwrap_or(273.15);
-                let tmax = itx.value().replace(',', ".").parse().unwrap_or(1000.0);
-                info!(
-                    "Применение ручного масштаба: [{}-{}] и [{}-{}]",
-                    vmin, vmax, tmin, tmax
-                );
-                s.send(Message::ApplyPlotLimits(vmin, vmax, tmin, tmax));
+                s.send(Message::ApplyPlotLimits(
+                    x_min.value().replace(',', ".").parse().unwrap_or(0.0),
+                    x_max.value().replace(',', ".").parse().unwrap_or(1.0),
+                    y_min.value().replace(',', ".").parse().unwrap_or(0.0),
+                    y_max.value().replace(',', ".").parse().unwrap_or(1.0),
+                ));
             }
         });
 
@@ -148,6 +177,7 @@ impl PlotTab {
             let s = sender.clone();
             move |_| s.send(Message::SelectData)
         });
+
         btn_export_plot.set_callback({
             let s = sender.clone();
             move |_| s.send(Message::ExportPlot)
@@ -157,22 +187,36 @@ impl PlotTab {
             group,
             choice_plot_type,
             plot_frame,
-            inp_val_min,
-            inp_val_max,
-            inp_t_min,
-            inp_t_max,
-            btn_apply_limits,
+            inp_x_min,
+            inp_x_max,
+            inp_y_min,
+            inp_y_max,
+            axis_x_label,
+            axis_y_label,
         }
     }
 
+    pub fn sync_controls(&mut self, state: &AppState) {
+        self.choice_plot_type
+            .set_value(plot_to_choice_index(state.plot_type));
+        let (x_label, y_label) = axis_labels(state.plot_type, state.swap_axes);
+        self.axis_x_label.set_label(x_label);
+        self.axis_y_label.set_label(y_label);
+        self.inp_x_min.set_value(&format!("{:.6}", state.custom_limits.0));
+        self.inp_x_max.set_value(&format!("{:.6}", state.custom_limits.1));
+        self.inp_y_min.set_value(&format!("{:.6}", state.custom_limits.2));
+        self.inp_y_max.set_value(&format!("{:.6}", state.custom_limits.3));
+    }
+
     pub fn redraw_plot(&mut self, state: &AppState) {
+        self.sync_controls(state);
+
         let fw = self.plot_frame.w();
         let fh = self.plot_frame.h();
         if fw <= 0 || fh <= 0 {
             return;
         }
 
-        debug!("Перерисовка графика: {}x{}", fw, fh);
         let buffer = render_plot_to_buffer(state, fw as u32, fh as u32);
         if let Ok(img) = RgbImage::new(&buffer, fw, fh, ColorDepth::Rgb8) {
             self.plot_frame.set_image(Some(img));

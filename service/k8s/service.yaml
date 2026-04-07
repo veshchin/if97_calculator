@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: if97-calculator-service
+  labels:
+    app.kubernetes.io/name: if97-calculator-service
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: if97-calculator-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

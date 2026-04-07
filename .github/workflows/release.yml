@@ -1,44 +1,35 @@
-name: Release IF97 Calculator
+name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
+  CARGO_TERM_COLOR: always
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-and-release:
+  validate:
+    name: Validate Workspace
+    runs-on: ubuntu-22.04
     permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows-latest
-            os_suffix: WIN
-            binary_ext: .exe
-          - platform: macos-latest
-            os_suffix: MAC
-            binary_ext: ""
-          - platform: ubuntu-22.04
-            os_suffix: UBUNTU
-            binary_ext: ""
-
-    runs-on: ${{ matrix.platform }}
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Install Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Install dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -47,50 +38,96 @@ jobs:
       - name: Install Trunk
         uses: jetli/trunk-action@v0.5.0
         with:
-          version: 'latest'
+          version: latest
 
-      - name: Rust Cache
+      - name: Cache cargo build outputs
         uses: swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
 
-      # 1. Явная сборка фронтенда (Wasm/Yew) для всех
-      - name: Build Frontend
+      - name: Check workspace
+        run: cargo check --workspace
+
+      - name: Check web target
+        run: cargo check -p if97_calculator_web --target wasm32-unknown-unknown
+
+      - name: Test core
+        run: cargo test -p if97_core
+
+  release:
+    name: Release ${{ matrix.platform }}
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-latest
+            fltk_ext: .exe
+          - platform: macos
+            runner: macos-latest
+            fltk_ext: ""
+          - platform: linux
+            runner: ubuntu-22.04
+            fltk_ext: ""
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
         run: |
-          cd wasm
-          trunk build --release
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y cmake libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
 
-      # 2. Сборка портативной версии (FLTK) - ТОЛЬКО ДЛЯ WINDOWS
-      - name: Build FLTK Portable
-        if: matrix.platform == 'windows-latest'
-        run: cargo build --release -p if97_calculator_portable_win
+      - name: Install Trunk
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: latest
 
-      # 3. Переименование портативного бинарника - ТОЛЬКО ДЛЯ WINDOWS
-      - name: Prepare Portable Artifact
-        if: matrix.platform == 'windows-latest'
+      - name: Cache cargo build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Build FLTK application
+        run: cargo build --release -p if97_calculator_fltk
+
+      - name: Prepare FLTK artifact
         shell: bash
         run: |
           mkdir -p artifacts
-          cp target/release/if97_calculator_portable_win${{ matrix.binary_ext }} artifacts/IF97-PORTABLE-${{ matrix.os_suffix }}${{ matrix.binary_ext }}
+          cp target/release/if97_calculator_fltk${{ matrix.fltk_ext }} artifacts/if97_calculator_fltk-${{ matrix.platform }}${{ matrix.fltk_ext }}
 
-      # 4. Сборка Tauri (Инсталляторы для всех ОС)
-      - name: Build and Release Tauri App
+      - name: Build and publish Tauri application
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: "wasm"
+          projectPath: wasm
           tagName: ${{ github.ref_name }}
-          releaseName: "IF97 Calculator ${{ github.ref_name }}"
-          releaseBody: "Автоматическая сборка: инсталляторы (Tauri) для всех ОС и портативный .exe (FLTK) для Windows."
-          releaseDraft: true
+          releaseName: IF97 Calculator ${{ github.ref_name }}
+          releaseBody: |
+            Автоматическая публикация релиза.
+
+            Состав:
+            - Tauri desktop bundles
+            - FLTK standalone binaries
+            - артефакты собраны из одного workspace и одного ядра if97_core
+          releaseDraft: false
           prerelease: false
 
-      # 5. Загрузка портативного файла - ТОЛЬКО ДЛЯ WINDOWS
-      - name: Upload Portable to Release
-        if: matrix.platform == 'windows-latest'
+      - name: Upload FLTK artifact to release
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload ${{ github.ref_name }} artifacts/IF97-PORTABLE-${{ matrix.os_suffix }}${{ matrix.binary_ext }} --clobber
+        run: gh release upload ${{ github.ref_name }} artifacts/if97_calculator_fltk-${{ matrix.platform }}${{ matrix.fltk_ext }} --clobber

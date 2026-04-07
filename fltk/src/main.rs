@@ -1,28 +1,23 @@
-// desktop_fltk/src/main.rs
-
 #![windows_subsystem = "windows"]
 
 mod plot;
 mod state;
 mod ui;
 
+use chrono::Local;
 use fltk::{app, browser::CheckBrowser, button::Button, dialog, prelude::*, window::Window};
+use if97_app_api::{DiagramKind, InputMode};
+use if97_core::{errors::If97Error, If97, WaterState};
 use std::fs;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, error, info, warn};
-
-// Импорты из обновленного ядра
-use chrono::Local;
-use if97_core::{If97, Region};
-
-use crate::plot::renderer::render_plot_to_file;
-use crate::state::{AppState, Message, SavedData};
-use crate::ui::MainUI;
-
+use tracing::{error, info};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
-/// Адаптер для захвата логов системы tracing во внутренний буфер приложения
+use crate::plot::renderer::render_plot_to_file;
+use crate::state::{AppState, BatchRow, Message, SavedData, SavedKind};
+use crate::ui::MainUI;
+
 #[derive(Clone)]
 struct LogBuffer(Arc<Mutex<String>>);
 
@@ -33,122 +28,462 @@ impl Write for LogBuffer {
         }
         Ok(buf.len())
     }
+
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+fn parse_value(raw: &str) -> Result<f64, String> {
+    raw.trim()
+        .replace(',', ".")
+        .parse::<f64>()
+        .map_err(|_| "Ошибка чтения".to_string())
+}
+
+fn normalize_table_input(input: &str) -> String {
+    input.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn map_error(err: If97Error) -> String {
+    match err {
+        If97Error::PhaseBoundaryError(msg) => format!("Линия насыщения: {msg}"),
+        If97Error::OutOfBounds(msg) => format!("Вне диапазона: {msg}"),
+        other => other.to_string(),
+    }
+}
+
+fn calculate_state(mode: InputMode, raw_a: &str, raw_b: &str) -> Result<WaterState, String> {
+    let v1 = parse_value(raw_a)?;
+    let v2 = parse_value(raw_b)?;
+    let result = match mode {
+        InputMode::Pt => If97::pt(v1.into(), v2.into()),
+        InputMode::Rhot => If97::rhot(v1.into(), v2.into()),
+        InputMode::Ph => If97::ph(v1.into(), v2.into()),
+        InputMode::Ps => If97::ps(v1.into(), v2.into()),
+        InputMode::Px => If97::px(v1.into(), v2.into()),
+    };
+    result.map_err(map_error)
+}
+
+fn parse_line_pair(line: &str) -> Result<(f64, f64), String> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Err(String::new());
+    }
+
+    if line.contains(';') {
+        let parts: Vec<&str> = line
+            .split(';')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.len() >= 2 {
+            return Ok((parse_value(parts[0])?, parse_value(parts[1])?));
+        }
+    }
+
+    if line.contains('\t') {
+        let parts: Vec<&str> = line
+            .split('\t')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.len() >= 2 {
+            return Ok((parse_value(parts[0])?, parse_value(parts[1])?));
+        }
+    }
+
+    let whitespace_parts: Vec<&str> = line.split_whitespace().collect();
+    if whitespace_parts.len() >= 2 {
+        return Ok((
+            parse_value(whitespace_parts[0])?,
+            parse_value(whitespace_parts[1])?,
+        ));
+    }
+
+    let comma_parts: Vec<&str> = line
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    match comma_parts.len() {
+        2 => Ok((parse_value(comma_parts[0])?, parse_value(comma_parts[1])?)),
+        3 => Ok((
+            parse_value(&format!("{},{}", comma_parts[0], comma_parts[1]))?,
+            parse_value(comma_parts[2])?,
+        )),
+        _ => Err("Недостаточно колонок".to_string()),
+    }
+}
+
+fn calculate_table_rows(mode: InputMode, content: &str) -> Vec<BatchRow> {
+    let mut rows = Vec::new();
+
+    for (index, raw_line) in content.lines().enumerate() {
+        let line_no = index + 1;
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let (v1, v2) = match parse_line_pair(line) {
+            Ok(values) => values,
+            Err(error) => {
+                if !error.is_empty() {
+                    rows.push(BatchRow {
+                        line_no,
+                        state: None,
+                        error: Some(error),
+                    });
+                }
+                continue;
+            }
+        };
+
+        match calculate_state(mode, &v1.to_string(), &v2.to_string()) {
+            Ok(state) => rows.push(BatchRow {
+                line_no,
+                state: Some(state),
+                error: None,
+            }),
+            Err(error) => rows.push(BatchRow {
+                line_no,
+                state: None,
+                error: Some(error),
+            }),
+        }
+    }
+
+    rows
+}
+
+fn format_value(value: f64, precision: usize, unit: &str) -> String {
+    let numeric = if value.is_infinite() {
+        if value.is_sign_negative() {
+            "-∞".to_string()
+        } else {
+            "∞".to_string()
+        }
+    } else if value.is_nan() {
+        "NaN".to_string()
+    } else {
+        format!("{:.*}", precision, value)
+    };
+    format!("{numeric} {unit}")
+}
+
+fn format_single_result(state: &WaterState, precision: usize) -> String {
+    [
+        "РЕЗУЛЬТАТ:".to_string(),
+        format!("Регион: {:?}", state.region),
+        format!("p = {}", format_value(state.p.inner(), precision, "МПа")),
+        format!("T = {}", format_value(state.t.inner(), precision, "К")),
+        format!("v = {}", format_value(state.v.inner(), precision, "м3/кг")),
+        format!("rho = {}", format_value(state.rho.inner(), precision, "кг/м3")),
+        format!("h = {}", format_value(state.h.inner(), precision, "кДж/кг")),
+        format!("s = {}", format_value(state.s.inner(), precision, "кДж/(кг·К)")),
+        format!("u = {}", format_value(state.u.inner(), precision, "кДж/кг")),
+        format!("cp = {}", format_value(state.cp.inner(), precision, "кДж/(кг·К)")),
+        format!("w = {}", format_value(state.w.inner(), precision, "м/с")),
+    ]
+    .join("\n")
+}
+
+fn sync_saved_lists(ui: &mut MainUI, state: &AppState) {
+    ui.single_tab.sync_saved_points(&state.saved_point_labels());
+    ui.batch_tab.sync_saved_tables(&state.saved_table_labels());
+}
+
+fn saved_point_name(state: &AppState, mode: InputMode, raw_a: &str, raw_b: &str) -> Option<String> {
+    state.datasets.iter().find_map(|dataset| match &dataset.kind {
+        SavedKind::Point { mode: saved_mode, v1, v2 }
+            if *saved_mode == mode && v1 == raw_a && v2 == raw_b =>
+        {
+            Some(dataset.name.clone())
+        }
+        _ => None,
+    })
+}
+
+fn saved_table_name(state: &AppState, mode: InputMode, content: &str) -> Option<String> {
+    let normalized = normalize_table_input(content);
+    state.datasets.iter().find_map(|dataset| match &dataset.kind {
+        SavedKind::Table {
+            mode: saved_mode,
+            input,
+        } if *saved_mode == mode && normalize_table_input(input) == normalized => {
+            Some(dataset.name.clone())
+        }
+        _ => None,
+    })
+}
+
+fn refresh_single_result(
+    ui: &mut MainUI,
+    state: &mut AppState,
+    mode: InputMode,
+    raw_a: String,
+    raw_b: String,
+) {
+    if raw_a.trim().is_empty() || raw_b.trim().is_empty() {
+        ui.single_tab.update_result("Ожидание данных...", false);
+        state.last_single_result = None;
+        state.last_single_request = None;
+        return;
+    }
+
+    match calculate_state(mode, &raw_a, &raw_b) {
+        Ok(result) => {
+            ui.single_tab
+                .update_result(&format_single_result(&result, state.single_precision), false);
+            state.last_single_result = Some(result);
+            state.last_single_request = Some((mode, raw_a.clone(), raw_b.clone()));
+            if let Some(name) = saved_point_name(state, mode, &raw_a, &raw_b) {
+                ui.single_tab.set_save_name(&name);
+            }
+        }
+        Err(error) => {
+            ui.single_tab
+                .update_result(&format!("Ошибка расчета:\n{error}"), true);
+            state.last_single_result = None;
+            state.last_single_request = Some((mode, raw_a, raw_b));
+        }
+    }
+}
+
+fn refresh_batch_result(
+    ui: &mut MainUI,
+    state: &mut AppState,
+    mode: InputMode,
+    content: String,
+) {
+    state.current_table_rows = calculate_table_rows(mode, &content);
+    state.current_table_dataset_mut().points = state
+        .current_table_rows
+        .iter()
+        .filter_map(|row| row.state.clone())
+        .collect();
+
+    ui.batch_tab
+        .update_table(&state.current_table_rows, state.table_precision);
+
+    if let Some(name) = saved_table_name(state, mode, &content) {
+        ui.batch_tab.set_save_name(&name);
+    }
+}
+
+fn generate_table_block(
+    v1_from: &str,
+    v1_to: &str,
+    v1_step: &str,
+    v2_from: &str,
+    v2_to: &str,
+    v2_step: &str,
+) -> Result<String, String> {
+    let parse_range = |from: &str, to: &str, step: &str| -> Result<(f64, f64, f64, usize), String> {
+        let from = parse_value(from)?;
+        let to = parse_value(to)?;
+        let step = parse_value(step)?;
+        if step == 0.0 {
+            return Err("Шаг генератора не может быть нулевым".to_string());
+        }
+        if (to > from && step < 0.0) || (to < from && step > 0.0) {
+            return Err("Шаг генератора не соответствует направлению диапазона".to_string());
+        }
+        let steps = (((to - from) / step) + 1e-9).abs().floor() as usize;
+        Ok((from, to, step, steps))
+    };
+
+    let (from1, _, step1, steps1) = parse_range(v1_from, v1_to, v1_step)?;
+    let (from2, _, step2, steps2) = parse_range(v2_from, v2_to, v2_step)?;
+
+    let total_rows = (steps1 + 1).saturating_mul(steps2 + 1);
+    if total_rows > 20_000 {
+        return Err("Превышен лимит генератора: максимум 20000 строк".to_string());
+    }
+
+    let mut generated = String::new();
+    for index1 in 0..=steps1 {
+        let value1 = from1 + (index1 as f64) * step1;
+        let value1 = (value1 * 1_000_000_000.0).round() / 1_000_000_000.0;
+        for index2 in 0..=steps2 {
+            let value2 = from2 + (index2 as f64) * step2;
+            let value2 = (value2 * 1_000_000_000.0).round() / 1_000_000_000.0;
+            generated.push_str(&format!("{value1};{value2}\n"));
+        }
+    }
+
+    Ok(generated)
+}
+
+fn write_batch_export(
+    state: &AppState,
+    filename: &str,
+    delimiter: u8,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut writer = csv::WriterBuilder::new()
+        .delimiter(delimiter)
+        .from_path(filename)?;
+
+    writer.write_record([
+        "строка",
+        "p_MPa",
+        "T_K",
+        "v_m3_kg",
+        "rho_kg_m3",
+        "h_kJ_kg",
+        "s_kJ_kgK",
+        "u_kJ_kg",
+        "cp_kJ_kgK",
+        "w_m_s",
+        "region",
+        "error",
+    ])?;
+
+    for row in &state.current_table_rows {
+        if let Some(point) = &row.state {
+            writer.write_record([
+                row.line_no.to_string(),
+                format!("{:.*}", state.table_precision, point.p.inner()),
+                format!("{:.*}", state.table_precision, point.t.inner()),
+                format!("{:.*}", state.table_precision, point.v.inner()),
+                format!("{:.*}", state.table_precision, point.rho.inner()),
+                format!("{:.*}", state.table_precision, point.h.inner()),
+                format!("{:.*}", state.table_precision, point.s.inner()),
+                format!("{:.*}", state.table_precision, point.u.inner()),
+                format!("{:.*}", state.table_precision, point.cp.inner()),
+                format!("{:.*}", state.table_precision, point.w.inner()),
+                format!("{:?}", point.region),
+                String::new(),
+            ])?;
+        } else {
+            writer.write_record([
+                row.line_no.to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                row.error.clone().unwrap_or_default(),
+            ])?;
+        }
+    }
+
+    writer.flush()?;
+    Ok(())
 }
 
 fn main() {
     let logs_storage = Arc::new(Mutex::new(String::new()));
     let log_adapter = LogBuffer(logs_storage.clone());
 
-    // 2. Настройка логирования через .and()
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
-        // std::io::stderr — это функция-замыкание, возвращающая stderr
-        // .and() объединяет её с другим замыканием, возвращающим ваш буфер
         .with_writer(std::io::stderr.and(move || log_adapter.clone()))
         .init();
 
-    info!("Приложение запущено. Логи выводятся в консоль и записываются в буфер.");
-    // 2. Настройка FLTK и каналов связи
+    info!("Приложение FLTK запущено");
+
     let fltk_app = app::App::default();
     let (sender, receiver) = app::channel::<Message>();
 
     let mut state = AppState::new();
     let mut main_ui = MainUI::new(sender.clone());
+    main_ui.single_tab.set_mode(InputMode::Pt);
+    main_ui.single_tab.set_precision(state.single_precision);
+    main_ui.batch_tab.set_mode(InputMode::Pt);
+    main_ui.batch_tab.set_precision(state.table_precision);
+    main_ui.plot_tab.redraw_plot(&state);
+    sync_saved_lists(&mut main_ui, &state);
 
     main_ui.window.show();
-    main_ui.plot_tab.redraw_plot(&state);
 
-    // 3. Главный цикл обработки сообщений
     while fltk_app.wait() {
         if let Some(msg) = receiver.recv() {
             match msg {
-                // --- Одиночный расчет ---
-                Message::CalculateSingle { mode, val_a, val_b } => {
-                    debug!(
-                        "Запрос на расчет: режим {}, параметры: {}, {}",
-                        mode, val_a, val_b
-                    );
-
-                    if val_a.is_nan() || val_b.is_nan() {
-                        error!("Введены некорректные данные (NaN)");
+                Message::CalculateSingle { mode, raw_a, raw_b } => {
+                    refresh_single_result(&mut main_ui, &mut state, mode, raw_a, raw_b);
+                }
+                Message::SetSinglePrecision(precision) => {
+                    state.single_precision = precision.min(10);
+                    if let Some(result) = &state.last_single_result {
                         main_ui
                             .single_tab
-                            .update_result("Ошибка: Введите числовые значения.", true);
-                        state.last_single_result = None;
-                        continue;
+                            .update_result(&format_single_result(result, state.single_precision), false);
                     }
-
-                    // Передаем данные в фасад If97, оборачивая f64 в типы размерностей
-                    let result = match mode {
-                        0 => If97::pt(val_a.into(), val_b.into()),
-                        1 => If97::rhot(val_a.into(), val_b.into()),
-                        2 => If97::ph(val_a.into(), val_b.into()),
-                        3 => If97::ps(val_a.into(), val_b.into()),
-                        4 => If97::px(val_a.into(), val_b.into()),
-                        _ => {
-                            error!("Неподдерживаемый режим расчета: {}", mode);
-                            continue;
-                        }
+                }
+                Message::SaveSinglePoint {
+                    name,
+                    mode,
+                    raw_a,
+                    raw_b,
+                } => {
+                    let Some(result) = state.last_single_result.clone() else {
+                        dialog::alert(150, 200, "Сначала выполните успешный расчет.");
+                        continue;
                     };
 
-                    match result {
-                        Ok(s) => {
-                            info!("Расчет завершен. Регион: {:?}", s.region);
-
-                            let out = format!(
-                                "РЕЗУЛЬТАТ:\nРегион: {:?}\np = {:.6} МПа\nT = {:.2} К\nv = {:.6} м3/кг\nrho = {:.2} кг/м3\nh = {:.2} кДж/кг\ns = {:.4} кДж/(кг·К)\nu = {:.2} кДж/кг\ncp = {:.4} кДж/(кг·К)\nw = {:.2} м/с",
-                                s.region,
-                                s.p.inner(),
-                                s.t.inner(),
-                                s.v.inner(),
-                                s.rho.inner(),
-                                s.h.inner(),
-                                s.s.inner(),
-                                s.u.inner(),
-                                s.cp.inner(),
-                                s.w.inner()
-                            );
-
-                            main_ui.single_tab.update_result(&out, false);
-                            state.last_single_result = Some(s);
-                        }
-                        Err(e) => {
-                            warn!("Ядро вернуло ошибку: {}", e);
-                            main_ui
-                                .single_tab
-                                .update_result(&format!("Ошибка:\n{}", e), true);
-                            state.last_single_result = None;
-                        }
-                    }
-                }
-
-                Message::SaveSinglePoint => {
-                    if let Some(st) = &state.last_single_result {
-                        if let Some(name) = dialog::input(150, 200, "Имя для точки:", "Точка 1")
-                        {
-                            if !name.is_empty() {
-                                state.datasets.push(SavedData {
-                                    name: name.clone(),
-                                    points: vec![st.clone()],
-                                    visible: true,
-                                });
-                                info!("Точка '{}' сохранена в наборы данных.", name);
-                                main_ui.plot_tab.redraw_plot(&state);
-                            }
-                        }
+                    let name = if name.trim().is_empty() {
+                        format!("Точка {}", state.saved_point_labels().len() + 1)
                     } else {
-                        dialog::alert(150, 200, "Сначала выполните успешный расчет!");
+                        name
+                    };
+
+                    if let Some(existing) = state.datasets.iter_mut().find(|dataset| {
+                        matches!(
+                            &dataset.kind,
+                            SavedKind::Point { mode: saved_mode, v1, v2 }
+                                if *saved_mode == mode && v1 == &raw_a && v2 == &raw_b
+                        )
+                    }) {
+                        existing.name = name.clone();
+                        existing.points = vec![result];
+                    } else {
+                        state.datasets.push(SavedData {
+                            name: name.clone(),
+                            points: vec![result],
+                            visible: true,
+                            kind: SavedKind::Point {
+                                mode,
+                                v1: raw_a.clone(),
+                                v2: raw_b.clone(),
+                            },
+                        });
+                    }
+
+                    main_ui.single_tab.set_save_name(&name);
+                    sync_saved_lists(&mut main_ui, &state);
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::LoadSavedPoint(index) => {
+                    if let Some(dataset) = state.saved_point_at(index).cloned() {
+                        if let SavedKind::Point { mode, v1, v2 } = dataset.kind {
+                            main_ui.single_tab.set_request(mode, &v1, &v2);
+                            main_ui.single_tab.set_save_name(&dataset.name);
+                            refresh_single_result(&mut main_ui, &mut state, mode, v1, v2);
+                        }
                     }
                 }
-
-                // --- Табличный расчет ---
+                Message::DeleteSavedPoint(index) => {
+                    state.remove_saved_point(index);
+                    sync_saved_lists(&mut main_ui, &state);
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
                 Message::LoadBatchFile => {
                     let mut chooser = dialog::FileChooser::new(
                         ".",
-                        "*.{csv,txt}",
+                        "*.{csv,txt,tsv,dat}",
                         dialog::FileChooserType::Single,
                         "Открыть файл",
                     );
@@ -157,113 +492,137 @@ fn main() {
                         app::wait();
                     }
                     if let Some(filename) = chooser.value(1) {
-                        if let Ok(content) = fs::read_to_string(&filename) {
-                            info!("Загружен файл: {}", filename);
-                            main_ui.batch_tab.set_input(&content);
+                        match fs::read_to_string(&filename) {
+                            Ok(content) => {
+                                main_ui.batch_tab.set_input(&content);
+                                let mode = match main_ui.batch_tab.choice_mode.value() {
+                                    0 => InputMode::Pt,
+                                    1 => InputMode::Rhot,
+                                    2 => InputMode::Ph,
+                                    3 => InputMode::Ps,
+                                    _ => InputMode::Px,
+                                };
+                                refresh_batch_result(&mut main_ui, &mut state, mode, content);
+                                main_ui.plot_tab.redraw_plot(&state);
+                            }
+                            Err(err) => dialog::alert(150, 200, &format!("Ошибка чтения файла: {err}")),
                         }
                     }
                 }
+                Message::SetTablePrecision(precision) => {
+                    state.table_precision = precision.min(10);
+                    main_ui
+                        .batch_tab
+                        .update_table(&state.current_table_rows, state.table_precision);
+                }
+                Message::SaveBatchTable {
+                    name,
+                    mode,
+                    content,
+                } => {
+                    let points = state
+                        .current_table_rows
+                        .iter()
+                        .filter_map(|row| row.state.clone())
+                        .collect::<Vec<_>>();
+                    if points.is_empty() {
+                        dialog::alert(150, 200, "Нет корректных строк для сохранения.");
+                        continue;
+                    }
 
-                Message::SaveBatchTable => {
-                    let current_points = state.datasets[0].points.clone();
-                    if current_points.is_empty() {
-                        dialog::alert(150, 200, "Таблица пуста!");
-                    } else if let Some(name) =
-                        dialog::input(150, 200, "Имя набора данных:", "Набор 1")
-                    {
-                        if !name.is_empty() {
-                            state.datasets.push(SavedData {
-                                name: name.clone(),
-                                points: current_points,
-                                visible: true,
-                            });
-                            info!("Набор '{}' сохранен.", name);
+                    let name = if name.trim().is_empty() {
+                        format!("Таблица {}", state.saved_table_labels().len() + 1)
+                    } else {
+                        name
+                    };
+
+                    if let Some(existing) = state.datasets.iter_mut().find(|dataset| {
+                        matches!(
+                            &dataset.kind,
+                            SavedKind::Table { mode: saved_mode, input }
+                                if *saved_mode == mode
+                                    && normalize_table_input(input) == normalize_table_input(&content)
+                        )
+                    }) {
+                        existing.name = name.clone();
+                        existing.points = points;
+                    } else {
+                        state.datasets.push(SavedData {
+                            name: name.clone(),
+                            points,
+                            visible: true,
+                            kind: SavedKind::Table {
+                                mode,
+                                input: content.clone(),
+                            },
+                        });
+                    }
+
+                    main_ui.batch_tab.set_save_name(&name);
+                    sync_saved_lists(&mut main_ui, &state);
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::LoadSavedTable(index) => {
+                    if let Some(dataset) = state.saved_table_at(index).cloned() {
+                        if let SavedKind::Table { mode, input } = dataset.kind {
+                            main_ui.batch_tab.set_mode(mode);
+                            main_ui.batch_tab.set_input(&input);
+                            main_ui.batch_tab.set_save_name(&dataset.name);
+                            refresh_batch_result(&mut main_ui, &mut state, mode, input);
                             main_ui.plot_tab.redraw_plot(&state);
                         }
                     }
                 }
-
-                Message::BatchDataChanged { mode, content } => {
-                    debug!("Пересчет таблицы (режим {})", mode);
-                    let mut new_points = Vec::new();
-                    main_ui.batch_tab.output_table.clear();
-                    main_ui.batch_tab.output_table.add("P_MPa\tT_K\tRegion\tx_vapor_fraction\tv_m3_kg\trho_kg_m3\th_kJ_kg\ts_kJ_kgK\tu_kJ_kg\tcp_kJ_kgK\tcv_kJ_kgK\tw_m_s");
-
-                    for line in content.lines() {
-                        if line.trim().is_empty() {
-                            continue;
-                        }
-                        let cleaned = line.replace(';', " ").replace(',', " ");
-                        let parts: Vec<&str> = cleaned.split_whitespace().collect();
-
-                        if parts.len() >= 2 {
-                            if let (Ok(va), Ok(vb)) =
-                                (parts[0].parse::<f64>(), parts[1].parse::<f64>())
-                            {
-                                let res = match mode {
-                                    0 => If97::pt(va.into(), vb.into()),
-                                    1 => If97::rhot(va.into(), vb.into()),
-                                    2 => If97::ph(va.into(), vb.into()),
-                                    3 => If97::ps(va.into(), vb.into()),
-                                    4 => If97::px(va.into(), vb.into()),
-                                    _ => continue,
-                                };
-
-                                match res {
-                                    Ok(s) => {
-                                        let rn = match s.region {
-                                            Region::Region1 => "1",
-                                            Region::Region2 => "2",
-                                            Region::Region3 => "3",
-                                            Region::Region4 => "4",
-                                            Region::Region5 => "5",
-                                            _ => "-",
-                                        };
-                                        let xs = if mode == 4 {
-                                            format!("{:.4}", vb)
-                                        } else {
-                                            "-".to_string()
-                                        };
-
-                                        let fmt = |v: f64, p: usize| {
-                                            if v.is_nan() {
-                                                "-".into()
-                                            } else {
-                                                format!("{:.*}", p, v)
-                                            }
-                                        };
-
-                                        main_ui.batch_tab.output_table.add(&format!(
-                                            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t-\t{}",
-                                            fmt(s.p.inner(), 5),
-                                            fmt(s.t.inner(), 2),
-                                            rn,
-                                            xs,
-                                            fmt(s.v.inner(), 6),
-                                            fmt(s.rho.inner(), 2),
-                                            fmt(s.h.inner(), 4),
-                                            fmt(s.s.inner(), 4),
-                                            fmt(s.u.inner(), 4),
-                                            fmt(s.cp.inner(), 4),
-                                            fmt(s.w.inner(), 2)
-                                        ));
-                                        new_points.push(s);
-                                    }
-                                    Err(_) => main_ui
-                                        .batch_tab
-                                        .output_table
-                                        .add("Ошибка\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-"),
-                                }
-                            }
-                        }
-                    }
-                    state.datasets[0].points = new_points;
+                Message::DeleteSavedTable(index) => {
+                    state.remove_saved_table(index);
+                    sync_saved_lists(&mut main_ui, &state);
                     main_ui.plot_tab.redraw_plot(&state);
                 }
-
-                // --- Графики и системные команды ---
-                Message::ChangePlotType(pt) => {
-                    state.plot_type = pt;
+                Message::BatchDataChanged { mode, content } => {
+                    refresh_batch_result(&mut main_ui, &mut state, mode, content);
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::GenerateBatchData {
+                    v1_from,
+                    v1_to,
+                    v1_step,
+                    v2_from,
+                    v2_to,
+                    v2_step,
+                } => match generate_table_block(&v1_from, &v1_to, &v1_step, &v2_from, &v2_to, &v2_step) {
+                    Ok(generated) => {
+                        let mut content = main_ui.batch_tab.input_area.value();
+                        if !content.is_empty() && !content.ends_with('\n') {
+                            content.push('\n');
+                        }
+                        content.push_str(&generated);
+                        main_ui.batch_tab.set_input(&content);
+                        let mode = match main_ui.batch_tab.choice_mode.value() {
+                            0 => InputMode::Pt,
+                            1 => InputMode::Rhot,
+                            2 => InputMode::Ph,
+                            3 => InputMode::Ps,
+                            _ => InputMode::Px,
+                        };
+                        refresh_batch_result(&mut main_ui, &mut state, mode, content);
+                        main_ui.plot_tab.redraw_plot(&state);
+                    }
+                    Err(error) => dialog::alert(150, 200, &error),
+                },
+                Message::ChangePlotType(kind) => {
+                    state.plot_type = kind;
+                    if state.autoscale {
+                        state.custom_limits = match kind {
+                            DiagramKind::Pt => (273.15, 1000.0, 0.001, 100.0),
+                            DiagramKind::Pv => (0.001, 2.0, 0.001, 100.0),
+                            DiagramKind::Ps => (0.0, 10.0, 0.001, 100.0),
+                            DiagramKind::Ph => (0.0, 4000.0, 0.001, 100.0),
+                            DiagramKind::Tv => (0.001, 2.0, 273.15, 1000.0),
+                            DiagramKind::Ts => (0.0, 10.0, 273.15, 1000.0),
+                            DiagramKind::Th => (0.0, 4000.0, 273.15, 1000.0),
+                            DiagramKind::Hs => (0.0, 10.0, 0.0, 4000.0),
+                        };
+                    }
                     main_ui.plot_tab.redraw_plot(&state);
                 }
                 Message::ToggleDome(show) => {
@@ -278,31 +637,21 @@ fn main() {
                     state.autoscale = auto;
                     main_ui.plot_tab.redraw_plot(&state);
                 }
-                Message::ApplyPlotLimits(vmin, vmax, tmin, tmax) => {
-                    state.custom_limits = (vmin, vmax, tmin, tmax);
+                Message::ApplyPlotLimits(x_min, x_max, y_min, y_max) => {
+                    state.custom_limits = (x_min, x_max, y_min, y_max);
                     main_ui.plot_tab.redraw_plot(&state);
                 }
-
-                Message::UpdateDataVisibility(vis) => {
-                    for (i, v) in vis.into_iter().enumerate() {
-                        if i < state.datasets.len() {
-                            state.datasets[i].visible = v;
-                        }
-                    }
-                    main_ui.plot_tab.redraw_plot(&state);
-                }
-
                 Message::SelectData => {
                     let mut win = Window::default()
-                        .with_size(300, 400)
+                        .with_size(320, 420)
                         .with_label("Выбор данных");
-                    let mut cb = CheckBrowser::default().with_size(280, 320).with_pos(10, 10);
+                    let mut cb = CheckBrowser::default().with_size(300, 340).with_pos(10, 10);
                     let mut btn_apply = Button::default()
                         .with_size(100, 40)
                         .with_label("Применить")
-                        .with_pos(100, 340);
-                    for ds in &state.datasets {
-                        cb.add(&ds.name, ds.visible);
+                        .with_pos(110, 360);
+                    for dataset in &state.datasets {
+                        cb.add(&dataset.name, dataset.visible);
                     }
                     win.make_modal(true);
                     win.show();
@@ -316,11 +665,18 @@ fn main() {
                         b.window().unwrap().hide();
                     });
                 }
-
+                Message::UpdateDataVisibility(vis) => {
+                    for (index, visible) in vis.into_iter().enumerate() {
+                        if let Some(dataset) = state.datasets.get_mut(index) {
+                            dataset.visible = visible;
+                        }
+                    }
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
                 Message::ExportPlot => {
-                    let default_path = std::env::var("USERPROFILE")
-                        .map(|p| format!("{}\\Desktop\\IF97_plot.png", p))
-                        .unwrap_or_else(|_| "IF97_plot.png".to_string());
+                    let default_path = std::env::var("HOME")
+                        .map(|p| format!("{}/Desktop/if97_plot.png", p))
+                        .unwrap_or_else(|_| "if97_plot.png".to_string());
 
                     let mut chooser = dialog::FileChooser::new(
                         &default_path,
@@ -336,26 +692,21 @@ fn main() {
                         if !filename.ends_with(".png") {
                             filename.push_str(".png");
                         }
-                        if render_plot_to_file(&state, &filename, 1920, 1080).is_ok() {
-                            info!("График успешно экспортирован в {}", filename);
-                            dialog::message(150, 200, "График сохранен!");
+                        match render_plot_to_file(&state, &filename, 1920, 1080) {
+                            Ok(_) => dialog::message(150, 200, "График сохранен."),
+                            Err(err) => dialog::alert(150, 200, &format!("Ошибка экспорта: {err}")),
                         }
                     }
                 }
-
-                // --- Экспорт логов с автоматическим именем ---
                 Message::SaveLogFile => {
-                    // Генерируем имя вида: if97_debug_2026-03-27_20-45.log
                     let timestamp = Local::now().format("%Y-%m-%d_%H-%M").to_string();
-                    let default_name = format!("if97_debug_{}.log", timestamp);
-
-                    info!("Запрос на сохранение логов: {}", default_name);
+                    let default_name = format!("if97_debug_{timestamp}.log");
 
                     let mut chooser = dialog::FileChooser::new(
                         &default_name,
                         "Log Files (*.log)",
                         dialog::FileChooserType::Create,
-                        "Сохранить отчет об ошибках",
+                        "Сохранить журнал",
                     );
                     chooser.show();
                     while chooser.shown() {
@@ -367,30 +718,21 @@ fn main() {
                             filename.push_str(".log");
                         }
                         if let Ok(content) = logs_storage.lock() {
-                            if std::fs::write(&filename, content.as_str()).is_ok() {
-                                info!("Логи успешно сохранены в {}", filename);
-                                dialog::message(150, 200, "Логи успешно сохранены!");
-                            } else {
-                                error!("Ошибка при сохранении логов.");
+                            match std::fs::write(&filename, content.as_str()) {
+                                Ok(_) => dialog::message(150, 200, "Логи сохранены."),
+                                Err(err) => dialog::alert(150, 200, &format!("Ошибка записи: {err}")),
                             }
                         }
                     }
                 }
-
-                // --- Экспорт таблицы результатов ---
                 Message::ExportBatchData => {
-                    let points = &state.datasets[0].points;
-                    if points.is_empty() {
-                        dialog::alert(
-                            150,
-                            200,
-                            "Нет данных для экспорта! Сначала введите значения в таблицу.",
-                        );
+                    if state.current_table_rows.is_empty() {
+                        dialog::alert(150, 200, "Нет данных для экспорта.");
                         continue;
                     }
 
                     let timestamp = Local::now().format("%Y-%m-%d").to_string();
-                    let default_name = format!("if97_export_{}.csv", timestamp);
+                    let default_name = format!("if97_export_{timestamp}.csv");
 
                     let mut chooser = dialog::FileChooser::new(
                         &default_name,
@@ -404,12 +746,8 @@ fn main() {
                     }
 
                     if let Some(filename) = chooser.value(1) {
-                        // Определяем разделитель по выбранному фильтру
                         let filter = chooser.filter();
-                        let delimiter = if filter
-                            .as_ref()
-                            .map_or(false, |f| f.contains("разделитель ;"))
-                        {
+                        let delimiter = if filter.as_ref().map_or(false, |f| f.contains("разделитель ;")) {
                             b';'
                         } else if filename.ends_with(".txt") {
                             b'\t'
@@ -417,45 +755,12 @@ fn main() {
                             b','
                         };
 
-                        let mut wtr = csv::WriterBuilder::new()
-                            .delimiter(delimiter)
-                            .from_path(&filename);
-
-                        if let Ok(mut w) = wtr {
-                            // Заголовки (используем типичные для отрасли названия)
-                            let _ = w.write_record(&[
-                                "P_MPa",
-                                "T_K",
-                                "Region",
-                                "v_m3_kg",
-                                "rho_kg_m3",
-                                "h_kJ_kg",
-                                "s_kJ_kgK",
-                                "u_kJ_kg",
-                                "cp_kJ_kgK",
-                                "w_m_s",
-                            ]);
-                            for p in points {
-                                // Распаковываем значения через .inner()
-                                let _ = w.write_record(&[
-                                    format!("{:.6}", p.p.inner()),
-                                    format!("{:.2}", p.t.inner()),
-                                    format!("{:?}", p.region),
-                                    format!("{:.8}", p.v.inner()),
-                                    format!("{:.3}", p.rho.inner()),
-                                    format!("{:.4}", p.h.inner()),
-                                    format!("{:.5}", p.s.inner()),
-                                    format!("{:.4}", p.u.inner()),
-                                    format!("{:.4}", p.cp.inner()),
-                                    format!("{:.2}", p.w.inner()),
-                                ]);
+                        match write_batch_export(&state, &filename, delimiter) {
+                            Ok(_) => dialog::message(150, 200, "Файл успешно сохранен."),
+                            Err(err) => {
+                                error!("Ошибка экспорта таблицы: {err}");
+                                dialog::alert(150, 200, &format!("Ошибка экспорта: {err}"));
                             }
-                            let _ = w.flush();
-                            info!("Таблица успешно экспортирована: {}", filename);
-                            dialog::message(150, 200, "Файл успешно сохранен!");
-                        } else {
-                            error!("Ошибка создания файла: {}", filename);
-                            dialog::alert(150, 200, "Не удалось создать файл для записи!");
                         }
                     }
                 }

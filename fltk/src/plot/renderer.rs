@@ -1,16 +1,135 @@
-// File: src/plot/renderer.rs
-
-use crate::state::{AppState, PlotType};
+use crate::state::AppState;
+use if97_app_api::DiagramKind;
+use if97_core::{If97, WaterState};
 use plotters::prelude::*;
 
-use if97_core::If97;
-use if97_core::WaterState;
-// Для удобного оборачивания значений
-use if97_core::units::*;
-
 fn get_palette_color(idx: usize) -> RGBColor {
-    let palette = [RED, BLUE, GREEN, MAGENTA, CYAN, BLACK];
+    let palette = [
+        RGBColor(41, 98, 255),
+        RGBColor(220, 53, 69),
+        RGBColor(25, 135, 84),
+        RGBColor(255, 140, 0),
+        RGBColor(111, 66, 193),
+        RGBColor(13, 202, 240),
+        RGBColor(108, 117, 125),
+    ];
     palette[idx % palette.len()]
+}
+
+fn project_state(kind: DiagramKind, swap_axes: bool, state: &WaterState) -> (f64, f64) {
+    let (mut x, mut y) = match kind {
+        DiagramKind::Ts => (state.s.inner(), state.t.inner()),
+        DiagramKind::Hs => (state.s.inner(), state.h.inner()),
+        DiagramKind::Ph => (state.h.inner(), state.p.inner()),
+        DiagramKind::Tv => (state.v.inner(), state.t.inner()),
+        DiagramKind::Pv => (state.v.inner(), state.p.inner()),
+        DiagramKind::Pt => (state.t.inner(), state.p.inner()),
+        DiagramKind::Ps => (state.s.inner(), state.p.inner()),
+        DiagramKind::Th => (state.h.inner(), state.t.inner()),
+    };
+
+    if swap_axes {
+        std::mem::swap(&mut x, &mut y);
+    }
+
+    (x, y)
+}
+
+fn axis_labels(kind: DiagramKind, swap_axes: bool) -> (&'static str, &'static str) {
+    let (x, y) = match kind {
+        DiagramKind::Ts => ("Энтропия s, кДж/(кг·К)", "Температура T, К"),
+        DiagramKind::Hs => ("Энтропия s, кДж/(кг·К)", "Энтальпия h, кДж/кг"),
+        DiagramKind::Ph => ("Энтальпия h, кДж/кг", "Давление p, МПа"),
+        DiagramKind::Tv => ("Удельный объем v, м3/кг", "Температура T, К"),
+        DiagramKind::Pv => ("Удельный объем v, м3/кг", "Давление p, МПа"),
+        DiagramKind::Pt => ("Температура T, К", "Давление p, МПа"),
+        DiagramKind::Ps => ("Энтропия s, кДж/(кг·К)", "Давление p, МПа"),
+        DiagramKind::Th => ("Энтальпия h, кДж/кг", "Температура T, К"),
+    };
+
+    if swap_axes { (y, x) } else { (x, y) }
+}
+
+fn default_limits(kind: DiagramKind, swap_axes: bool) -> (f64, f64, f64, f64) {
+    let (mut x_min, mut x_max, mut y_min, mut y_max) = match kind {
+        DiagramKind::Pt => (273.15, 1000.0, 0.001, 100.0),
+        DiagramKind::Pv => (0.001, 2.0, 0.001, 100.0),
+        DiagramKind::Ps => (0.0, 10.0, 0.001, 100.0),
+        DiagramKind::Ph => (0.0, 4000.0, 0.001, 100.0),
+        DiagramKind::Tv => (0.001, 2.0, 273.15, 1000.0),
+        DiagramKind::Ts => (0.0, 10.0, 273.15, 1000.0),
+        DiagramKind::Th => (0.0, 4000.0, 273.15, 1000.0),
+        DiagramKind::Hs => (0.0, 10.0, 0.0, 4000.0),
+    };
+
+    if swap_axes {
+        std::mem::swap(&mut x_min, &mut y_min);
+        std::mem::swap(&mut x_max, &mut y_max);
+    }
+
+    (x_min, x_max, y_min, y_max)
+}
+
+fn build_dome_points(kind: DiagramKind, swap_axes: bool) -> Vec<(f64, f64)> {
+    let mut liquid = Vec::new();
+    let mut vapor = Vec::new();
+    let p_min = 0.000611657_f64;
+    let p_max = 22.064_f64;
+    let steps = 220;
+
+    for index in 0..=steps {
+        let t = index as f64 / steps as f64;
+        let pressure = (p_min.ln() + t * (p_max.ln() - p_min.ln())).exp();
+        if let Ok(state) = If97::px(pressure.into(), 0.0.into()) {
+            liquid.push(project_state(kind, swap_axes, &state));
+        }
+        if let Ok(state) = If97::px(pressure.into(), 1.0.into()) {
+            vapor.push(project_state(kind, swap_axes, &state));
+        }
+    }
+
+    vapor.reverse();
+    liquid.extend(vapor);
+    liquid
+}
+
+fn collect_limits(state: &AppState) -> (f64, f64, f64, f64) {
+    if !state.autoscale {
+        let (x_min, mut x_max, y_min, mut y_max) = state.custom_limits;
+        if x_max <= x_min {
+            x_max = x_min + 1.0;
+        }
+        if y_max <= y_min {
+            y_max = y_min + 1.0;
+        }
+        return (x_min, x_max, y_min, y_max);
+    }
+
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+
+    for dataset in state.datasets.iter().filter(|dataset| dataset.visible) {
+        for point in &dataset.points {
+            let (x, y) = project_state(state.plot_type, state.swap_axes, point);
+            if !x.is_finite() || !y.is_finite() {
+                continue;
+            }
+            min_x = min_x.min(x);
+            max_x = max_x.max(x);
+            min_y = min_y.min(y);
+            max_y = max_y.max(y);
+        }
+    }
+
+    if !min_x.is_finite() || !min_y.is_finite() {
+        return default_limits(state.plot_type, state.swap_axes);
+    }
+
+    let pad_x = ((max_x - min_x).abs() * 0.1).max(1e-6);
+    let pad_y = ((max_y - min_y).abs() * 0.1).max(1e-6);
+    (min_x - pad_x, max_x + pad_x, min_y - pad_y, max_y + pad_y)
 }
 
 pub fn render_plot_to_buffer(state: &AppState, width: u32, height: u32) -> Vec<u8> {
@@ -37,252 +156,73 @@ pub fn render_plot_to_file(
 }
 
 fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotters::coord::Shift>) {
-    let current_plot = state.plot_type;
-    let show_dome = state.show_dome;
-    let swap_axes = state.swap_axes;
-    let autoscale = state.autoscale;
-    let custom_limits = state.custom_limits;
+    let (x_min, x_max, y_min, y_max) = collect_limits(state);
+    let (x_desc, y_desc) = axis_labels(state.plot_type, state.swap_axes);
 
-    let bright_purple = RGBColor(180, 0, 255);
-
-    // Распаковываем значения с помощью .inner()
-    let get_coords = |s: &WaterState| -> (f64, f64) {
-        let val = match current_plot {
-            PlotType::PT => s.p.inner(),
-            PlotType::RhoT => s.rho.inner(),
-            PlotType::VT => s.v.inner(),
-        };
-        if swap_axes {
-            (s.t.inner(), val)
-        } else {
-            (val, s.t.inner())
-        }
+    let mut chart = match ChartBuilder::on(root)
+        .margin(36)
+        .x_label_area_size(56)
+        .y_label_area_size(82)
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)
+    {
+        Ok(chart) => chart,
+        Err(_) => return,
     };
 
-    let mut sat_liq = Vec::new();
-    let mut sat_vap = Vec::new();
+    chart
+        .configure_mesh()
+        .x_desc(x_desc)
+        .y_desc(y_desc)
+        .light_line_style(WHITE.mix(0.7))
+        .draw()
+        .ok();
 
-    if show_dome {
-        let mut p = 0.000611;
-        let p_crit = 22.064;
-        while p <= p_crit {
-            // Используем новый API и оборачиваем f64
-            if let Ok(st) = If97::px(p.into(), 0.0.into()) {
-                sat_liq.push(st);
-            }
-            if let Ok(st) = If97::px(p.into(), 1.0.into()) {
-                sat_vap.push(st);
-            }
-
-            if p < 0.01 {
-                p += 0.002;
-            } else if p < 0.1 {
-                p += 0.02;
-            } else if p < 1.0 {
-                p += 0.2;
-            } else if p < 10.0 {
-                p += 1.0;
-            } else {
-                p += 2.0;
-            }
-        }
-        if let Ok(st) = If97::px(p_crit.into(), 0.5.into()) {
-            sat_liq.push(st.clone());
-            sat_vap.push(st);
-        }
-    }
-
-    let mut min_x = f64::MAX;
-    let mut max_x = f64::MIN;
-    let mut min_y = f64::MAX;
-    let mut max_y = f64::MIN;
-
-    if autoscale {
-        let mut valid_points = 0;
-
-        for ds in state.datasets.iter() {
-            if !ds.visible {
-                continue;
-            }
-            for s in &ds.points {
-                let (cx, cy) = get_coords(s);
-                if cx.is_nan() || cy.is_nan() {
-                    continue;
-                }
-
-                if cx < min_x {
-                    min_x = cx;
-                }
-                if cx > max_x {
-                    max_x = cx;
-                }
-                if cy < min_y {
-                    min_y = cy;
-                }
-                if cy > max_y {
-                    max_y = cy;
-                }
-                valid_points += 1;
-            }
-        }
-
-        if valid_points == 0 {
-            if show_dome {
-                let (mut def_x_min, mut def_x_max) = match current_plot {
-                    PlotType::PT => (0.0, 25.0),
-                    PlotType::RhoT => (0.0, 1100.0),
-                    PlotType::VT => (0.0005, 0.2),
-                };
-                let (mut def_y_min, mut def_y_max) = (270.0, 660.0);
-
-                if swap_axes {
-                    std::mem::swap(&mut def_x_min, &mut def_y_min);
-                    std::mem::swap(&mut def_x_max, &mut def_y_max);
-                }
-
-                min_x = def_x_min;
-                max_x = def_x_max;
-                min_y = def_y_min;
-                max_y = def_y_max;
-            } else {
-                min_x = 0.0;
-                max_x = 100.0;
-                min_y = 273.15;
-                max_y = 2273.15;
-                if swap_axes {
-                    std::mem::swap(&mut min_x, &mut min_y);
-                    std::mem::swap(&mut max_x, &mut max_y);
-                }
-            }
-        } else {
-            if max_x <= min_x {
-                let pad = if max_x == 0.0 {
-                    1.0
-                } else {
-                    max_x.abs() * 0.2 + 1.0
-                };
-                min_x -= pad;
-                max_x += pad;
-            } else {
-                let pad_x = (max_x - min_x) * 0.1;
-                min_x -= pad_x;
-                max_x += pad_x;
-            }
-
-            if max_y <= min_y {
-                let pad = if max_y == 0.0 {
-                    10.0
-                } else {
-                    max_y.abs() * 0.2 + 10.0
-                };
-                min_y -= pad;
-                max_y += pad;
-            } else {
-                let pad_y = (max_y - min_y) * 0.1;
-                min_y -= pad_y;
-                max_y += pad_y;
-            }
-        }
-    } else {
-        let (v_min, v_max, t_min, t_max) = custom_limits;
-        if swap_axes {
-            min_x = t_min;
-            max_x = t_max;
-            min_y = v_min;
-            max_y = v_max;
-        } else {
-            min_x = v_min;
-            max_x = v_max;
-            min_y = t_min;
-            max_y = t_max;
-        }
-        if min_x >= max_x {
-            max_x = min_x + 1.0;
-        }
-        if min_y >= max_y {
-            max_y = min_y + 1.0;
-        }
-    }
-
-    if let Ok(mut chart) = ChartBuilder::on(root)
-        .margin(40)
-        .x_label_area_size(40)
-        .y_label_area_size(60)
-        .build_cartesian_2d(min_x..max_x, min_y..max_y)
-    {
-        let desc_val = match current_plot {
-            PlotType::PT => "Давление (p), МПа",
-            PlotType::RhoT => "Плотность (rho), кг/м3",
-            PlotType::VT => "Уд. объем (v), м3/кг",
-        };
-        let desc_t = "Температура (T), К";
-
-        let (x_desc, y_desc) = if swap_axes {
-            (desc_t, desc_val)
-        } else {
-            (desc_val, desc_t)
-        };
-        chart
-            .configure_mesh()
-            .x_desc(x_desc)
-            .y_desc(y_desc)
-            .draw()
-            .ok();
-
-        if show_dome {
-            let sat_style = ShapeStyle::from(&bright_purple).stroke_width(2);
-            if current_plot == PlotType::PT {
-                chart
-                    .draw_series(LineSeries::new(
-                        sat_liq.iter().map(|s| get_coords(s)),
-                        sat_style,
-                    ))
-                    .ok();
-            } else {
-                let mut dome_points: Vec<(f64, f64)> =
-                    sat_liq.iter().map(|s| get_coords(s)).collect();
-                let mut vap_points: Vec<(f64, f64)> =
-                    sat_vap.iter().map(|s| get_coords(s)).collect();
-                vap_points.reverse();
-                dome_points.extend(vap_points);
-
-                chart
-                    .draw_series(LineSeries::new(dome_points, sat_style))
-                    .ok();
-            }
-        }
-
-        let mut color_idx = 0;
-        for ds in state.datasets.iter() {
-            if !ds.visible || ds.points.is_empty() {
-                continue;
-            }
-
-            let color = get_palette_color(color_idx);
-            color_idx += 1;
-
+    if state.show_dome {
+        let dome_points = build_dome_points(state.plot_type, state.swap_axes);
+        if !dome_points.is_empty() {
             chart
-                .draw_series(ds.points.iter().filter_map(|s| {
-                    let (cx, cy) = get_coords(s);
-                    if cx.is_nan() || cy.is_nan() {
-                        return None;
-                    }
-                    if cx < min_x || cx > max_x || cy < min_y || cy > max_y {
-                        return None;
-                    }
-                    Some(Circle::new((cx, cy), 4, color.filled()))
-                }))
-                .unwrap()
-                .label(&ds.name)
-                .legend(move |(x, y)| Circle::new((x, y), 4, color.filled()));
+                .draw_series(LineSeries::new(
+                    dome_points,
+                    RGBColor(180, 0, 255).stroke_width(2),
+                ))
+                .ok();
+        }
+    }
+
+    let mut color_idx = 0usize;
+    for dataset in state.datasets.iter().filter(|dataset| dataset.visible) {
+        if dataset.points.is_empty() {
+            continue;
         }
 
+        let color = get_palette_color(color_idx);
+        color_idx += 1;
+        let radius = if dataset.points.len() > 1000 { 2 } else { 4 };
+
         chart
-            .configure_series_labels()
-            .position(SeriesLabelPosition::UpperRight)
-            .background_style(&WHITE.mix(0.8))
-            .border_style(&BLACK)
-            .draw()
-            .ok();
+            .draw_series(dataset.points.iter().filter_map(|point| {
+                let (x, y) = project_state(state.plot_type, state.swap_axes, point);
+                if !x.is_finite() || !y.is_finite() {
+                    return None;
+                }
+                if x < x_min || x > x_max || y < y_min || y > y_max {
+                    return None;
+                }
+                Some(Circle::new((x, y), radius, color.filled()))
+            }))
+            .ok()
+            .map(|series| {
+                series
+                    .label(dataset.name.clone())
+                    .legend(move |(x, y)| Circle::new((x, y), 4, color.filled()))
+            });
     }
+
+    chart
+        .configure_series_labels()
+        .position(SeriesLabelPosition::UpperRight)
+        .background_style(WHITE.mix(0.9))
+        .border_style(BLACK)
+        .draw()
+        .ok();
 }

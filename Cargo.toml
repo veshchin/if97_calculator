@@ -4,6 +4,7 @@ members = [
     "if97_app_api",
     "core",
     "fltk",
+    "service",
     "wasm",
     "wasm/src-tauri"
 ]
