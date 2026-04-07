@@ -1,9 +1,9 @@
 // File: src/ui/single.rs
 
-use fltk::{prelude::*, group::*, button::*, input::*, menu::*, frame::*, enums::*};
-use fltk::app::Sender;
 use crate::state::Message;
-use tracing::{info, debug};
+use fltk::app::Sender;
+use fltk::{button::*, enums::*, frame::*, group::*, input::*, menu::*, prelude::*};
+use tracing::{debug, info};
 
 pub struct SingleTab {
     pub group: Group,
@@ -17,7 +17,13 @@ impl SingleTab {
     pub fn new(sender: Sender<Message>) -> Self {
         let group = Group::new(10, 35, 1030, 655, " Одиночный расчет ");
 
-        let mut instruction_single = Frame::new(20, 45, 1010, 40, "Инструкция: Выберите режим расчета и введите параметры. \nВнимание: Дробная часть числа должна отделяться ТОЧКОЙ (например, 14.5, а не 14,5).");
+        let mut instruction_single = Frame::new(
+            20,
+            45,
+            1010,
+            40,
+            "Инструкция: Выберите режим расчета и введите параметры. \nВнимание: Дробная часть числа должна отделяться ТОЧКОЙ (например, 14.5, а не 14,5).",
+        );
         instruction_single.set_align(Align::Left | Align::Inside);
         instruction_single.set_label_color(Color::Dark3);
         instruction_single.set_label_font(Font::HelveticaItalic);
@@ -60,14 +66,30 @@ impl SingleTab {
                 let val = c.value();
                 debug!("Смена режима одиночного расчета на индекс {}", val);
                 match val {
-                    0 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Температура (T), К:"); }
-                    1 => { ia.set_label("Плотность (rho), кг/м3:"); ib.set_label("Температура (T), К:"); }
-                    2 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Энтальпия (h), кДж/кг:"); }
-                    3 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Энтропия (s), кДж/(кг*К):"); }
-                    4 => { ia.set_label("Давление (p), МПа:"); ib.set_label("Степень сухости (x), 0.0-1.0:"); }
+                    0 => {
+                        ia.set_label("Давление (p), МПа:");
+                        ib.set_label("Температура (T), К:");
+                    }
+                    1 => {
+                        ia.set_label("Плотность (rho), кг/м3:");
+                        ib.set_label("Температура (T), К:");
+                    }
+                    2 => {
+                        ia.set_label("Давление (p), МПа:");
+                        ib.set_label("Энтальпия (h), кДж/кг:");
+                    }
+                    3 => {
+                        ia.set_label("Давление (p), МПа:");
+                        ib.set_label("Энтропия (s), кДж/(кг*К):");
+                    }
+                    4 => {
+                        ia.set_label("Давление (p), МПа:");
+                        ib.set_label("Степень сухости (x), 0.0-1.0:");
+                    }
                     _ => {}
                 }
-                ia.redraw(); ib.redraw();
+                ia.redraw();
+                ib.redraw();
             }
         });
 
@@ -77,10 +99,27 @@ impl SingleTab {
             let i_b = input_b.clone();
             let cm = choice_mode.clone();
             move |_| {
-                let val_a = i_a.value().replace(',', ".").parse::<f64>().unwrap_or(f64::NAN);
-                let val_b = i_b.value().replace(',', ".").parse::<f64>().unwrap_or(f64::NAN);
-                debug!("Клик 'Рассчитать': mode={}, a={}, b={}", cm.value(), val_a, val_b);
-                s.send(Message::CalculateSingle { mode: cm.value(), val_a, val_b });
+                let val_a = i_a
+                    .value()
+                    .replace(',', ".")
+                    .parse::<f64>()
+                    .unwrap_or(f64::NAN);
+                let val_b = i_b
+                    .value()
+                    .replace(',', ".")
+                    .parse::<f64>()
+                    .unwrap_or(f64::NAN);
+                debug!(
+                    "Клик 'Рассчитать': mode={}, a={}, b={}",
+                    cm.value(),
+                    val_a,
+                    val_b
+                );
+                s.send(Message::CalculateSingle {
+                    mode: cm.value(),
+                    val_a,
+                    val_b,
+                });
             }
         });
 
@@ -92,11 +131,18 @@ impl SingleTab {
             }
         });
 
-        Self { group, choice_mode, input_a, input_b, res_frame }
+        Self {
+            group,
+            choice_mode,
+            input_a,
+            input_b,
+            res_frame,
+        }
     }
 
     pub fn update_result(&mut self, text: &str, is_error: bool) {
         self.res_frame.set_label(text);
-        self.res_frame.set_label_color(if is_error { Color::Red } else { Color::Black });
+        self.res_frame
+            .set_label_color(if is_error { Color::Red } else { Color::Black });
     }
 }

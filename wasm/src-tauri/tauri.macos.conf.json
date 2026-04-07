@@ -1,0 +1,7 @@
+{
+  "build": {
+    "beforeBuildCommand": "env NO_COLOR=true trunk build",
+    "beforeDevCommand": "env NO_COLOR=true trunk serve"
+  }
+}
+

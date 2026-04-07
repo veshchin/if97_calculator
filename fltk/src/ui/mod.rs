@@ -1,17 +1,17 @@
 // File: src/ui/mod.rs
 
-pub mod single;
+pub mod about;
 pub mod batch;
 pub mod plot_tab;
-pub mod about; // Добавили
+pub mod single; // Добавили
 
-use fltk::{prelude::*, window::Window, group::Tabs};
-use fltk::app::Sender;
 use crate::state::Message;
-use single::SingleTab;
+use about::AboutTab;
 use batch::BatchTab;
+use fltk::app::Sender;
+use fltk::{group::Tabs, prelude::*, window::Window};
 use plot_tab::PlotTab;
-use about::AboutTab; // Добавили
+use single::SingleTab; // Добавили
 
 pub struct MainUI {
     pub window: Window,
@@ -23,7 +23,9 @@ pub struct MainUI {
 
 impl MainUI {
     pub fn new(sender: Sender<Message>) -> Self {
-        let mut window = Window::default().with_size(1050, 700).with_label("IAPWS-IF97 Calculator Pro");
+        let mut window = Window::default()
+            .with_size(1050, 700)
+            .with_label("IAPWS-IF97 Calculator Pro");
         window.make_resizable(true);
 
         let tabs = Tabs::new(10, 10, 1030, 680, "");
@@ -35,6 +37,12 @@ impl MainUI {
         tabs.end();
         window.end();
 
-        Self { window, single_tab, batch_tab, plot_tab, about_tab }
+        Self {
+            window,
+            single_tab,
+            batch_tab,
+            plot_tab,
+            about_tab,
+        }
     }
 }

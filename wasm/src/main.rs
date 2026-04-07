@@ -1,18 +1,15 @@
 /* File: src/main.rs */
 mod app;
-mod ui;
-mod types;
+mod logger;
 mod plot;
-mod logger; // Подключаем наш модуль
+mod tauri_api;
+mod types;
+mod ui; // Подключаем наш модуль
 
 use app::App;
 
 fn main() {
-    // Инициализируем перехват логов tracing ДО старта Yew
+    console_error_panic_hook::set_once();
     logger::init_logger();
-
-    // Можно сразу бросить тестовый лог
-    tracing::info!("Tracing logger initialized successfully.");
-
     yew::Renderer::<App>::new().render();
 }

@@ -518,44 +518,46 @@ pub fn table_calc_tab() -> Html {
     };
 
     html! {
-        <div style="position: relative; height: 100%; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="position: relative; height: 100%; min-height: 0; overflow: auto; display: flex; flex-direction: column;">
             <div class="table-calc-container fade-in" style="flex-grow: 1; overflow-y: auto; padding-bottom: 20px; display: flex; flex-direction: column;">
-                <div class="card instruction-card" style="margin-bottom: 15px; padding: 10px 12px; overflow-x: auto;">
-                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: max-content;">
-                        <h2 style="margin: 0; font-size: 1.05rem; white-space: nowrap;">{"Табличный расчет"}</h2>
-                        <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
+                <div class="card instruction-card table-top-strip">
+                    <div class="table-top-strip-scroll">
+                        <div class="table-top-strip-inner">
+                            <h2 class="table-top-title">{"Табличный расчет"}</h2>
+                            <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
 
-                        <label style="font-weight: 500; font-size: 0.9rem; white-space: nowrap;">{"Режим:"}</label>
-                        <select class="styled-select" value={s.t_mode.as_str()} onchange={on_mode} style="padding: 6px 10px; font-size: 0.9rem; min-width: 88px;">
-                            <option value="pt">{"p-T"}</option>
-                            <option value="rhot">{"rho-T"}</option>
-                            <option value="px">{"p-x"}</option>
-                            <option value="ps">{"p-s"}</option>
-                            <option value="ph">{"p-h"}</option>
-                        </select>
+                            <label class="table-top-label">{"Режим:"}</label>
+                            <select class="styled-select" value={s.t_mode.as_str()} onchange={on_mode} style="min-width: 82px;">
+                                <option value="pt">{"p-T"}</option>
+                                <option value="rhot">{"rho-T"}</option>
+                                <option value="px">{"p-x"}</option>
+                                <option value="ps">{"p-s"}</option>
+                                <option value="ph">{"p-h"}</option>
+                            </select>
 
-                        <label style="font-weight: 500; font-size: 0.9rem; white-space: nowrap;">{"Точность:"}</label>
-                        <select class="styled-select" value={s.t_precision.to_string()} onchange={on_precision_change} style="padding: 6px 8px; font-size: 0.9rem; width: 66px;">
-                            { for (0..=10).map(|precision| html! {
-                                <option value={precision.to_string()} selected={precision == s.t_precision}>{precision}</option>
-                            }) }
-                        </select>
+                            <label class="table-top-label">{"Точность:"}</label>
+                            <select class="styled-select" value={s.t_precision.to_string()} onchange={on_precision_change} style="width: 66px;">
+                                { for (0..=10).map(|precision| html! {
+                                    <option value={precision.to_string()} selected={precision == s.t_precision}>{precision}</option>
+                                }) }
+                            </select>
 
-                        <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
-                        <button class="btn btn-outline btn-sm" onclick={on_load_file}>{"Открыть"}</button>
-                        <button class="btn btn-success btn-sm" onclick={on_export_csv} disabled={s.t_res.is_empty()} style={if s.t_res.is_empty() { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>{"Экспорт CSV"}</button>
-                        <button class="btn btn-outline btn-sm" onclick={clear_selection}>{"Сброс выделения"}</button>
+                            <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
+                            <button class="btn btn-outline btn-sm" onclick={on_load_file}>{"Открыть"}</button>
+                            <button class="btn btn-success btn-sm" onclick={on_export_csv} disabled={s.t_res.is_empty()} style={if s.t_res.is_empty() { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>{"Экспорт CSV"}</button>
+                            <button class="btn btn-outline btn-sm" onclick={clear_selection}>{"Сброс выделения"}</button>
 
-                        <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
-                        <input type="text" class="styled-input" style="width: 220px; padding: 6px 10px; font-size: 0.9rem;" value={(*custom_name).clone()} oninput={on_name_input} placeholder="Имя сохраненной таблицы..." disabled={!has_valid_results} />
-                        <button class={classes!("btn", "btn-sm", if is_already_saved { "btn-primary" } else { "btn-success" })} onclick={on_save} disabled={!has_valid_results} style={if !has_valid_results { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>
-                            { if is_already_saved { "Обновить" } else { "Сохранить" } }
-                        </button>
-                        { if let Some(status) = &*save_status {
-                            html! { <span class="fade-in" style="color: #198754; font-size: 0.8rem; font-weight: 600; white-space: nowrap;">{status}</span> }
-                        } else {
-                            html! {}
-                        }}
+                            <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
+                            <input type="text" class={classes!("styled-input", "table-top-name")} value={(*custom_name).clone()} oninput={on_name_input} placeholder="Имя сохраненной таблицы..." disabled={!has_valid_results} />
+                            <button class={classes!("btn", "btn-sm", if is_already_saved { "btn-primary" } else { "btn-success" })} onclick={on_save} disabled={!has_valid_results} style={if !has_valid_results { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>
+                                { if is_already_saved { "Обновить" } else { "Сохранить" } }
+                            </button>
+                            { if let Some(status) = &*save_status {
+                                html! { <span class="fade-in" style="color: #198754; font-size: 0.8rem; font-weight: 600; white-space: nowrap;">{status}</span> }
+                            } else {
+                                html! {}
+                            }}
+                        </div>
                     </div>
                 </div>
 

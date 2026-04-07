@@ -25,20 +25,24 @@
 
 // --- Внутренние модули (скрыты от пользователя) ---
 mod calculator;
-mod state;
 mod constants;
+mod domain;
+mod engine;
+mod models;
+mod regions;
+mod state;
 mod tables;
-mod models; // Здесь спрятана вся сложная математика и логика регионов
+mod topology;
 
 // --- Публичные модули (доступны пользователю) ---
-/// Безопасные абстракции физических величин для защиты от ошибок размерностей.
-pub mod units;
 /// Типы ошибок, возникающих в процессе расчетов.
 pub mod errors;
+/// Безопасные абстракции физических величин для защиты от ошибок размерностей.
+pub mod units;
 
 // --- Реэкспорт главного API на верхний уровень для удобства ---
 pub use calculator::If97;
-pub use state::{WaterState, Region};
+pub use state::{Region, WaterState};
 
 #[cfg(test)]
 mod tests;

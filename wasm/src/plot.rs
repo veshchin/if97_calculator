@@ -93,7 +93,6 @@ pub fn cohen_sutherland(
 }
 
 pub struct ChartOptions {
-    pub draw_lines: bool,
     pub show_dome: bool,
     pub x_range: (f64, f64),
     pub y_range: (f64, f64),
@@ -165,26 +164,6 @@ pub fn draw_diagram(
 
     for (i, series) in series_list.iter().enumerate() {
         let color = colors[i % colors.len()];
-
-        if opts.draw_lines && series.points.len() > 1 {
-            // Динамическая обрезка линий графиков
-            let mut clipped_lines = Vec::new();
-            for j in 0..series.points.len().saturating_sub(1) {
-                let p0 = series.points[j];
-                let p1 = series.points[j + 1];
-                if let Some((cp0, cp1)) =
-                    cohen_sutherland(p0.0, p0.1, p1.0, p1.1, x_min, x_max, y_min, y_max)
-                {
-                    if clipped_lines.is_empty() {
-                        clipped_lines.push(cp0);
-                    }
-                    clipped_lines.push(cp1);
-                }
-            }
-            if !clipped_lines.is_empty() {
-                chart.draw_series(LineSeries::new(clipped_lines, color.stroke_width(3)))?;
-            }
-        }
 
         let pt_size = if series.points.len() > 1000 { 2 } else { 6 };
 

@@ -2115,10 +2115,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "if97_app_api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "if97_calculator_native"
 version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
+ "if97_app_api",
+ "if97_core",
+ "once_cell",
  "serde",
  "serde_json",
  "tauri",
@@ -2126,6 +2136,8 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-shell",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2146,8 +2158,9 @@ dependencies = [
 name = "if97_calculator_web"
 version = "0.1.3"
 dependencies = [
+ "console_error_panic_hook",
  "gloo-timers 0.3.0",
- "if97_core",
+ "if97_app_api",
  "once_cell",
  "plotters",
  "plotters-canvas",

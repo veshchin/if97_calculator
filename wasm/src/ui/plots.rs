@@ -113,7 +113,6 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let canvas_ref = use_node_ref();
     let chart_type = use_state(|| ChartType::Pt);
     let swap_axes = use_state(|| false);
-    let draw_lines = use_state(|| false);
     let show_dome = use_state(|| true);
     let ranges = use_state(PlotRanges::default);
     let is_dragging = use_state(|| false);
@@ -207,7 +206,6 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
             props.active,
             *chart_type,
             *swap_axes,
-            *draw_lines,
             *show_dome,
             *ranges,
             dome_points.clone(),
@@ -218,7 +216,6 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
             is_active,
             chart_type,
             swap_axes,
-            draw_lines,
             show_dome,
             ranges,
             dome_points,
@@ -228,7 +225,6 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                 let canvas_id = "plot-area".to_string();
                 let (x_var, y_var) = get_axes(*chart_type, *swap_axes);
                 let opts = ChartOptions {
-                    draw_lines: *draw_lines,
                     show_dome: *show_dome,
                     x_range: ranges.get(x_var),
                     y_range: ranges.get(y_var),
@@ -264,10 +260,6 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let toggle_swap = {
         let swap_axes = swap_axes.clone();
         Callback::from(move |_| swap_axes.set(!*swap_axes))
-    };
-    let toggle_lines = {
-        let draw_lines = draw_lines.clone();
-        Callback::from(move |_| draw_lines.set(!*draw_lines))
     };
     let toggle_dome = {
         let show_dome = show_dome.clone();
@@ -432,7 +424,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     };
 
     html! {
-        <div class="charts-container fade-in" style="display: flex; flex-direction: column; height: calc(100vh - 40px); overflow: hidden; position: relative;">
+        <div class="charts-container fade-in" style="display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; position: relative;">
             <div class="top-toolbar" style="display: flex; flex-wrap: wrap; gap: 15px; padding: 10px 15px; background: var(--card-bg); border-bottom: 1px solid var(--border); align-items: center; flex-shrink: 0; z-index: 5;">
                 <select class="styled-select" onchange={on_chart_type_change} style="padding: 6px 10px;">
                     <option value="pt" selected={*chart_type == ChartType::Pt}>{ "p-T диаграмма" }</option>
@@ -448,7 +440,6 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                 <div style="display: flex; gap: 10px; border-right: 1px solid var(--border); padding-right: 15px;">
                     <label class="toggle-label" style="font-size: 0.85rem;"><input type="checkbox" checked={*swap_axes} onclick={toggle_swap} /> { "Оси местами" }</label>
                     <label class="toggle-label" style="font-size: 0.85rem;"><input type="checkbox" checked={*show_dome} onclick={toggle_dome} /> { "Купол" }</label>
-                    <label class="toggle-label" style="font-size: 0.85rem;"><input type="checkbox" checked={*draw_lines} onclick={toggle_lines} /> { "Линии" }</label>
                 </div>
 
                 { scale_input(x_var, x_range) }

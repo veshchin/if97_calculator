@@ -32,7 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|e| e.path())
             .filter(|p| {
                 let is_csv = p.extension().is_some_and(|ext| ext == "csv");
-                let is_not_hidden = p.file_name()
+                let is_not_hidden = p
+                    .file_name()
                     .and_then(|name| name.to_str())
                     .map(|name_str| !name_str.starts_with('.'))
                     .unwrap_or(false);
@@ -53,12 +54,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut valid_lines = Vec::new();
             for line in contents.lines() {
                 let line = line.trim();
-                if line.is_empty() { continue; }
+                if line.is_empty() {
+                    continue;
+                }
                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
                 valid_lines.push(parts);
             }
 
-            if valid_lines.is_empty() { continue; }
+            if valid_lines.is_empty() {
+                continue;
+            }
             let cols = valid_lines[0].len();
 
             // Динамический вывод типов колонок.
@@ -79,7 +84,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                col_types.push(if is_float { "f64".to_string() } else { "i32".to_string() });
+                col_types.push(if is_float {
+                    "f64".to_string()
+                } else {
+                    "i32".to_string()
+                });
             }
 
             // Формируем Rust-сигнатуру кортежа в зависимости от количества колонок
@@ -87,8 +96,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 1 => "f64".to_string(),
                 2 => format!("(f64, {})", col_types[1]),
                 3 => format!("(f64, {}, {})", col_types[1], col_types[2]),
-                4 => format!("(f64, {}, {}, {})", col_types[1], col_types[2], col_types[3]),
-                _ => panic!("Неподдерживаемое количество колонок ({}) в файле {:?}", cols, path),
+                4 => format!(
+                    "(f64, {}, {}, {})",
+                    col_types[1], col_types[2], col_types[3]
+                ),
+                _ => panic!(
+                    "Неподдерживаемое количество колонок ({}) в файле {:?}",
+                    cols, path
+                ),
             };
 
             generated_code.push_str(&format!("pub const {}: &[{}] = &[\n", file_stem, type_decl));
@@ -96,19 +111,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Генерация строк массива с учетом определенных типов данных
             for (line_num, parts) in valid_lines.iter().enumerate() {
                 if cols == 1 {
-                    let n: f64 = parts[0].parse().unwrap_or_else(|_| panic!("Ошибка n в {:?}:{}", path, line_num));
+                    let n: f64 = parts[0]
+                        .parse()
+                        .unwrap_or_else(|_| panic!("Ошибка n в {:?}:{}", path, line_num));
                     generated_code.push_str(&format!("    {:16e},\n", n));
                 } else {
                     generated_code.push_str("    (");
-                    let n: f64 = parts[0].parse().unwrap_or_else(|_| panic!("Ошибка n в {:?}:{}", path, line_num));
+                    let n: f64 = parts[0]
+                        .parse()
+                        .unwrap_or_else(|_| panic!("Ошибка n в {:?}:{}", path, line_num));
                     generated_code.push_str(&format!("{:16e}", n));
 
                     for col_idx in 1..cols {
                         if col_types[col_idx] == "f64" {
-                            let val: f64 = parts[col_idx].parse().unwrap_or_else(|_| panic!("Ошибка f64 в {:?}:{} (col {})", path, line_num, col_idx));
+                            let val: f64 = parts[col_idx].parse().unwrap_or_else(|_| {
+                                panic!("Ошибка f64 в {:?}:{} (col {})", path, line_num, col_idx)
+                            });
                             generated_code.push_str(&format!(", {:16e}", val));
                         } else {
-                            let val: i32 = parts[col_idx].parse().unwrap_or_else(|_| panic!("Ошибка i32 в {:?}:{} (col {})", path, line_num, col_idx));
+                            let val: i32 = parts[col_idx].parse().unwrap_or_else(|_| {
+                                panic!("Ошибка i32 в {:?}:{} (col {})", path, line_num, col_idx)
+                            });
                             generated_code.push_str(&format!(", {}", val));
                         }
                     }
@@ -122,6 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Записываем итоговый сгенерированный код в файл tables.rs
-    fs::write(&dest_path, generated_code).expect("Не удалось записать сгенерированный файл tables.rs");
+    fs::write(&dest_path, generated_code)
+        .expect("Не удалось записать сгенерированный файл tables.rs");
     Ok(())
 }

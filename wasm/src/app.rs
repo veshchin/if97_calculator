@@ -1,34 +1,38 @@
 /* File: src/app.rs */
+use crate::types::{AppContext, PersistentState, SavedItemsState, StateContext};
+use crate::ui::{AboutLogsTab, PlotsTab, SingleCalcTab, TableCalcTab};
 use yew::prelude::*;
-use crate::ui::{single_calc::SingleCalcTab, table_calc::TableCalcTab, plots::PlotsTab, about_logs::AboutLogsTab};
-use crate::types::{SavedItem, AppContext, PersistentState, StateContext};
-use std::collections::{HashSet, HashMap};
 
 #[derive(Clone, PartialEq)]
-pub enum Tab { Single, Table, Plots, About }
+pub enum Tab {
+    Single,
+    Table,
+    Plots,
+    About,
+}
 
 #[function_component(App)]
 pub fn app() -> Html {
     let active_tab = use_state(|| Tab::Single);
-    let saved_items = use_state(Vec::<SavedItem>::new);
-
-    let persistent_state = use_state(|| PersistentState {
-        s_mode: "pt".to_string(), s_v1: String::new(), s_v2: String::new(), s_res: None, s_error: None,
-        t_input: String::new(), t_mode: "pt".to_string(), t_res: Vec::new(),
-        t_gen_params: HashMap::new(),
-        right_sidebar_open: false,
-        plot_selected: HashSet::new(),
-        is_dark_theme: false,
-    });
+    let saved_items = use_state(SavedItemsState::default);
+    let persistent_state = use_state(PersistentState::default);
 
     let set_tab = |tab: Tab| {
         let active_tab = active_tab.clone();
         Callback::from(move |_| active_tab.set(tab.clone()))
     };
 
-    // ИСПРАВЛЕНИЕ ЗДЕСЬ: Возвращен класс "tab-active" для обычных (не-флекс) вкладок
+    // Для обычных вкладок нужен класс tab-active, для гибких — tab-active-flex.
     let get_tab_class = |tab: Tab, is_flex: bool| {
-        if *active_tab == tab { if is_flex { "tab-active-flex" } else { "tab-active" } } else { "tab-hidden" }
+        if *active_tab == tab {
+            if is_flex {
+                "tab-active-flex"
+            } else {
+                "tab-active"
+            }
+        } else {
+            "tab-hidden"
+        }
     };
 
     let toggle_theme = {
@@ -49,7 +53,11 @@ pub fn app() -> Html {
         })
     };
 
-    let theme_class = if persistent_state.is_dark_theme { "theme-dark" } else { "theme-light" };
+    let theme_class = if persistent_state.is_dark_theme {
+        "theme-dark"
+    } else {
+        "theme-light"
+    };
 
     html! {
         <ContextProvider<AppContext> context={saved_items.clone()}>
@@ -66,7 +74,7 @@ pub fn app() -> Html {
                         <button class={classes!("nav-btn", (*active_tab == Tab::Plots).then_some("active"))} onclick={set_tab(Tab::Plots)} title="Графики">
                             {"📈"}
                         </button>
-                        <button class={classes!("nav-btn", (*active_tab == Tab::About).then_some("active"))} onclick={set_tab(Tab::About)} title="О программе и Логи">
+                        <button class={classes!("nav-btn", (*active_tab == Tab::About).then_some("active"))} onclick={set_tab(Tab::About)} title="О программе и логи">
                             {"ℹ️"}
                         </button>
 

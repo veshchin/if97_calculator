@@ -337,7 +337,7 @@ pub fn single_calc_tab() -> Html {
     };
 
     html! {
-        <div style="position: relative; height: 100%; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="position: relative; height: 100%; min-height: 0; overflow: auto; display: flex; flex-direction: column;">
             <div class="tab-content fade-in" style="flex-grow: 1; overflow-y: auto; padding-bottom: 20px;">
                 <div class="card instruction-card">
                     <h2 style="margin: 0; margin-bottom: 5px;">{"Одиночный расчет"}</h2>

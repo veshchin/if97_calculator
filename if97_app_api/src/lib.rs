@@ -174,3 +174,10 @@ pub struct PlotPoint {
     pub x: f64,
     pub y: f64,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogEntryDto {
+    pub source: String,
+    pub level: String,
+    pub message: String,
+}

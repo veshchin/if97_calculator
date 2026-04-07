@@ -8,14 +8,14 @@ mod tests {
     // Внутри src/ мы используем пути через crate:: или super::
     use crate::If97;
     use crate::Region;
-    use crate::models::boundaries::{determine_region, boundary_2bc_enthalpy};
-    use crate::models::traits::WaterRegionModel;
+    use crate::models::boundaries::{boundary_2bc_enthalpy, determine_region};
     use crate::models::region_1::Region1;
     use crate::models::region_2::Region2;
     use crate::models::region_2_meta::Region2Meta;
     use crate::models::region_3::Region3;
-    use crate::models::region_5::Region5;
     use crate::models::region_4::{saturation_pressure, saturation_temperature};
+    use crate::models::region_5::Region5;
+    use crate::models::traits::WaterRegionModel;
 
     /// Макрос для проверки равенства чисел с плавающей точкой с заданным допуском (абсолютная погрешность).
     macro_rules! assert_approx_eq {
@@ -25,7 +25,9 @@ mod tests {
             assert!(
                 diff < $eps,
                 "Assertion failed: `(left !== right)` (left: `{}`, right: `{}`, diff: `{}`)",
-                a, b, diff
+                a,
+                b,
+                diff
             );
         };
     }
@@ -43,11 +45,23 @@ mod tests {
         assert_eq!(determine_region(30.0, 1500.0), Region::Region5);
         assert_eq!(determine_region(3.0, 2500.0), Region::OutOfBounds);
 
-        assert_eq!(determine_region(16.74371590007485, 624.2019591836735), Region::Region4);
-        assert_eq!(determine_region(18.372134407844708, 631.8333061224489), Region::Region4);
-        assert_eq!(determine_region(20.136572088037845, 639.4646530612245), Region::Region4);
+        assert_eq!(
+            determine_region(16.74371590007485, 624.2019591836735),
+            Region::Region4
+        );
+        assert_eq!(
+            determine_region(18.372134407844708, 631.8333061224489),
+            Region::Region4
+        );
+        assert_eq!(
+            determine_region(20.136572088037845, 639.4646530612245),
+            Region::Region4
+        );
 
-        assert_eq!(determine_region(22.06399999995171, 647.096), Region::Region4);
+        assert_eq!(
+            determine_region(22.06399999995171, 647.096),
+            Region::Region4
+        );
     }
 
     #[test]
@@ -58,16 +72,34 @@ mod tests {
 
     #[test]
     fn test_facade_ph_correct_regions() {
-        assert_eq!(If97::ph(3.0.into(), 115.33.into()).unwrap().region, Region::Region1);
-        assert_eq!(If97::ph(0.0035.into(), 2549.9.into()).unwrap().region, Region::Region2);
-        assert_eq!(If97::ph(25.58.into(), 1863.4.into()).unwrap().region, Region::Region3);
+        assert_eq!(
+            If97::ph(3.0.into(), 115.33.into()).unwrap().region,
+            Region::Region1
+        );
+        assert_eq!(
+            If97::ph(0.0035.into(), 2549.9.into()).unwrap().region,
+            Region::Region2
+        );
+        assert_eq!(
+            If97::ph(25.58.into(), 1863.4.into()).unwrap().region,
+            Region::Region3
+        );
     }
 
     #[test]
     fn test_facade_ps_correct_regions() {
-        assert_eq!(If97::ps(3.0.into(), 0.392.into()).unwrap().region, Region::Region1);
-        assert_eq!(If97::ps(0.0035.into(), 8.522.into()).unwrap().region, Region::Region2);
-        assert_eq!(If97::ps(25.58.into(), 4.054.into()).unwrap().region, Region::Region3);
+        assert_eq!(
+            If97::ps(3.0.into(), 0.392.into()).unwrap().region,
+            Region::Region1
+        );
+        assert_eq!(
+            If97::ps(0.0035.into(), 8.522.into()).unwrap().region,
+            Region::Region2
+        );
+        assert_eq!(
+            If97::ps(25.58.into(), 4.054.into()).unwrap().region,
+            Region::Region3
+        );
     }
 
     // ==========================================
@@ -177,11 +209,7 @@ mod tests {
         assert_approx_eq!(saturation_pressure(500.0), 0.263889776e1, 1e-8);
         assert_approx_eq!(saturation_pressure(600.0), 0.123443146e2, 1e-7);
 
-        let test_points = [
-            (0.1, 372.755_919),
-            (1.0, 453.035_632),
-            (10.0, 584.149_488),
-        ];
+        let test_points = [(0.1, 372.755_919), (1.0, 453.035_632), (10.0, 584.149_488)];
 
         for (p, expected_t) in test_points.iter() {
             let t_calc = saturation_temperature(*p);
@@ -225,39 +253,123 @@ mod tests {
 
     #[test]
     fn test_region1_backward_t_ps() {
-        assert_approx_eq!(Region1.calculate_ps(3.0, 0.5).unwrap().t.inner(), 307.842258, 3e-2);
-        assert_approx_eq!(Region1.calculate_ps(80.0, 0.5).unwrap().t.inner(), 309.979785, 3e-2);
-        assert_approx_eq!(Region1.calculate_ps(80.0, 3.0).unwrap().t.inner(), 565.899909, 3e-2);
+        assert_approx_eq!(
+            Region1.calculate_ps(3.0, 0.5).unwrap().t.inner(),
+            307.842258,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region1.calculate_ps(80.0, 0.5).unwrap().t.inner(),
+            309.979785,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region1.calculate_ps(80.0, 3.0).unwrap().t.inner(),
+            565.899909,
+            3e-2
+        );
     }
 
     #[test]
     fn test_region2_backward_t_ph_official() {
-        assert_approx_eq!(Region2.calculate_ph(0.001, 3000.0).unwrap().t.inner(), 534.433241, 3e-2);
-        assert_approx_eq!(Region2.calculate_ph(3.0, 3000.0).unwrap().t.inner(), 575.373370, 3e-2);
-        assert_approx_eq!(Region2.calculate_ph(3.0, 4000.0).unwrap().t.inner(), 1010.77577, 3e-2);
+        assert_approx_eq!(
+            Region2.calculate_ph(0.001, 3000.0).unwrap().t.inner(),
+            534.433241,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ph(3.0, 3000.0).unwrap().t.inner(),
+            575.373370,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ph(3.0, 4000.0).unwrap().t.inner(),
+            1010.77577,
+            3e-2
+        );
 
-        assert_approx_eq!(Region2.calculate_ph(5.0, 3500.0).unwrap().t.inner(), 801.299102, 3e-2);
-        assert_approx_eq!(Region2.calculate_ph(5.0, 4000.0).unwrap().t.inner(), 1015.31583, 3e-2);
-        assert_approx_eq!(Region2.calculate_ph(25.0, 3500.0).unwrap().t.inner(), 875.279054, 3e-2);
+        assert_approx_eq!(
+            Region2.calculate_ph(5.0, 3500.0).unwrap().t.inner(),
+            801.299102,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ph(5.0, 4000.0).unwrap().t.inner(),
+            1015.31583,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ph(25.0, 3500.0).unwrap().t.inner(),
+            875.279054,
+            3e-2
+        );
 
-        assert_approx_eq!(Region2.calculate_ph(40.0, 2700.0).unwrap().t.inner(), 743.056411, 3e-2);
-        assert_approx_eq!(Region2.calculate_ph(60.0, 2700.0).unwrap().t.inner(), 791.137067, 3e-2);
-        assert_approx_eq!(Region2.calculate_ph(60.0, 3200.0).unwrap().t.inner(), 882.756860, 3e-2);
+        assert_approx_eq!(
+            Region2.calculate_ph(40.0, 2700.0).unwrap().t.inner(),
+            743.056411,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ph(60.0, 2700.0).unwrap().t.inner(),
+            791.137067,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ph(60.0, 3200.0).unwrap().t.inner(),
+            882.756860,
+            3e-2
+        );
     }
 
     #[test]
     fn test_region2_backward_t_ps_official() {
-        assert_approx_eq!(Region2.calculate_ps(0.1, 7.5).unwrap().t.inner(), 399.517097, 3e-2);
-        assert_approx_eq!(Region2.calculate_ps(0.1, 8.0).unwrap().t.inner(), 514.127081, 3e-2);
-        assert_approx_eq!(Region2.calculate_ps(2.5, 8.0).unwrap().t.inner(), 1039.84917, 3e-2);
+        assert_approx_eq!(
+            Region2.calculate_ps(0.1, 7.5).unwrap().t.inner(),
+            399.517097,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ps(0.1, 8.0).unwrap().t.inner(),
+            514.127081,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ps(2.5, 8.0).unwrap().t.inner(),
+            1039.84917,
+            3e-2
+        );
 
-        assert_approx_eq!(Region2.calculate_ps(8.0, 6.0).unwrap().t.inner(), 600.484040, 3e-2);
-        assert_approx_eq!(Region2.calculate_ps(8.0, 7.5).unwrap().t.inner(), 1064.95556, 3e-2);
-        assert_approx_eq!(Region2.calculate_ps(90.0, 6.0).unwrap().t.inner(), 1038.01126, 3e-2);
+        assert_approx_eq!(
+            Region2.calculate_ps(8.0, 6.0).unwrap().t.inner(),
+            600.484040,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ps(8.0, 7.5).unwrap().t.inner(),
+            1064.95556,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ps(90.0, 6.0).unwrap().t.inner(),
+            1038.01126,
+            3e-2
+        );
 
-        assert_approx_eq!(Region2.calculate_ps(20.0, 5.75).unwrap().t.inner(), 697.992849, 3e-2);
-        assert_approx_eq!(Region2.calculate_ps(80.0, 5.25).unwrap().t.inner(), 854.011484, 3e-2);
-        assert_approx_eq!(Region2.calculate_ps(80.0, 5.75).unwrap().t.inner(), 949.017998, 3e-2);
+        assert_approx_eq!(
+            Region2.calculate_ps(20.0, 5.75).unwrap().t.inner(),
+            697.992849,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ps(80.0, 5.25).unwrap().t.inner(),
+            854.011484,
+            3e-2
+        );
+        assert_approx_eq!(
+            Region2.calculate_ps(80.0, 5.75).unwrap().t.inner(),
+            949.017998,
+            3e-2
+        );
     }
 
     #[test]
@@ -292,13 +404,37 @@ mod tests {
 
     #[test]
     fn test_region5_backward_iterative() {
-        assert_approx_eq!(Region5.calculate_ph(0.5, 5219.76855).unwrap().t.inner(), 1500.0, 1e-4);
-        assert_approx_eq!(Region5.calculate_ph(30.0, 5167.23514).unwrap().t.inner(), 1500.0, 1e-4);
-        assert_approx_eq!(Region5.calculate_ph(30.0, 6571.22604).unwrap().t.inner(), 2000.0, 1e-4);
+        assert_approx_eq!(
+            Region5.calculate_ph(0.5, 5219.76855).unwrap().t.inner(),
+            1500.0,
+            1e-4
+        );
+        assert_approx_eq!(
+            Region5.calculate_ph(30.0, 5167.23514).unwrap().t.inner(),
+            1500.0,
+            1e-4
+        );
+        assert_approx_eq!(
+            Region5.calculate_ph(30.0, 6571.22604).unwrap().t.inner(),
+            2000.0,
+            1e-4
+        );
 
-        assert_approx_eq!(Region5.calculate_ps(0.5, 9.65408875).unwrap().t.inner(), 1500.0, 1e-4);
-        assert_approx_eq!(Region5.calculate_ps(30.0, 7.72970133).unwrap().t.inner(), 1500.0, 1e-4);
-        assert_approx_eq!(Region5.calculate_ps(30.0, 8.53640523).unwrap().t.inner(), 2000.0, 1e-4);
+        assert_approx_eq!(
+            Region5.calculate_ps(0.5, 9.65408875).unwrap().t.inner(),
+            1500.0,
+            1e-4
+        );
+        assert_approx_eq!(
+            Region5.calculate_ps(30.0, 7.72970133).unwrap().t.inner(),
+            1500.0,
+            1e-4
+        );
+        assert_approx_eq!(
+            Region5.calculate_ps(30.0, 8.53640523).unwrap().t.inner(),
+            2000.0,
+            1e-4
+        );
     }
 
     // ==========================================

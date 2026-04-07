@@ -9,6 +9,7 @@ dist/
 .idea/
 *.iml
 out/
+.zed/
 
 # macOS
 .DS_Store

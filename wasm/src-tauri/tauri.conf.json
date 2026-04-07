@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "IF97 Calculator",
+  "productName": "Калькулятор IF97",
   "version": "0.1.0",
   "identifier": "com.if97.calculator",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "IF97 Water Properties",
+        "title": "Свойства воды и пара IF97",
         "width": 1200,
         "height": 800,
         "resizable": true,

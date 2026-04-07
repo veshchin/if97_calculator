@@ -1,9 +1,11 @@
 // File: src/ui/batch.rs
 
-use fltk::{prelude::*, group::*, button::*, input::*, menu::*, frame::*, browser::HoldBrowser, enums::*};
-use fltk::app::Sender;
 use crate::state::Message;
-use tracing::{info, debug};
+use fltk::app::Sender;
+use fltk::{
+    browser::HoldBrowser, button::*, enums::*, frame::*, group::*, input::*, menu::*, prelude::*,
+};
+use tracing::{debug, info};
 
 pub struct BatchTab {
     pub group: Group,
@@ -18,7 +20,13 @@ impl BatchTab {
         let mut group = Group::new(10, 35, 1030, 655, " Табличный расчет ");
 
         // 2. Инструкция
-        let mut instruction = Frame::new(20, 45, 1010, 40, "Инструкция: Вставьте данные в левое поле или загрузите файл. Разделители: пробел, табуляция, запятая. Дробная часть — ТОЧКА.");
+        let mut instruction = Frame::new(
+            20,
+            45,
+            1010,
+            40,
+            "Инструкция: Вставьте данные в левое поле или загрузите файл. Разделители: пробел, табуляция, запятая. Дробная часть — ТОЧКА.",
+        );
         instruction.set_align(Align::Left | Align::Inside);
         instruction.set_label_color(Color::Dark3);
         instruction.set_label_font(Font::HelveticaItalic);
@@ -79,8 +87,14 @@ impl BatchTab {
             let s = sender.clone();
             let cm = choice_mode.clone();
             move |i| {
-                debug!("Пакетные данные изменены, отправка на расчет. Режим: {}", cm.value());
-                s.send(Message::BatchDataChanged { mode: cm.value(), content: i.value() })
+                debug!(
+                    "Пакетные данные изменены, отправка на расчет. Режим: {}",
+                    cm.value()
+                );
+                s.send(Message::BatchDataChanged {
+                    mode: cm.value(),
+                    content: i.value(),
+                })
             }
         });
         input_area.set_trigger(CallbackTrigger::Changed);
@@ -93,7 +107,12 @@ impl BatchTab {
             }
         });
 
-        Self { group, choice_mode, input_area, output_table }
+        Self {
+            group,
+            choice_mode,
+            input_area,
+            output_table,
+        }
     }
 
     pub fn set_input(&mut self, text: &str) {

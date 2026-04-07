@@ -1,7 +1,7 @@
 // File: src/plot/renderer.rs
 
-use plotters::prelude::*;
 use crate::state::{AppState, PlotType};
+use plotters::prelude::*;
 
 use if97_core::If97;
 use if97_core::WaterState;
@@ -23,7 +23,12 @@ pub fn render_plot_to_buffer(state: &AppState, width: u32, height: u32) -> Vec<u
     buffer
 }
 
-pub fn render_plot_to_file(state: &AppState, filename: &str, width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+pub fn render_plot_to_file(
+    state: &AppState,
+    filename: &str,
+    width: u32,
+    height: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let root = BitMapBackend::new(filename, (width, height)).into_drawing_area();
     root.fill(&WHITE)?;
     draw_core(state, &root);
@@ -47,7 +52,11 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
             PlotType::RhoT => s.rho.inner(),
             PlotType::VT => s.v.inner(),
         };
-        if swap_axes { (s.t.inner(), val) } else { (val, s.t.inner()) }
+        if swap_axes {
+            (s.t.inner(), val)
+        } else {
+            (val, s.t.inner())
+        }
     };
 
     let mut sat_liq = Vec::new();
@@ -58,14 +67,24 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
         let p_crit = 22.064;
         while p <= p_crit {
             // Используем новый API и оборачиваем f64
-            if let Ok(st) = If97::px(p.into(), 0.0.into()) { sat_liq.push(st); }
-            if let Ok(st) = If97::px(p.into(), 1.0.into()) { sat_vap.push(st); }
+            if let Ok(st) = If97::px(p.into(), 0.0.into()) {
+                sat_liq.push(st);
+            }
+            if let Ok(st) = If97::px(p.into(), 1.0.into()) {
+                sat_vap.push(st);
+            }
 
-            if p < 0.01 { p += 0.002; }
-            else if p < 0.1 { p += 0.02; }
-            else if p < 1.0 { p += 0.2; }
-            else if p < 10.0 { p += 1.0; }
-            else { p += 2.0; }
+            if p < 0.01 {
+                p += 0.002;
+            } else if p < 0.1 {
+                p += 0.02;
+            } else if p < 1.0 {
+                p += 0.2;
+            } else if p < 10.0 {
+                p += 1.0;
+            } else {
+                p += 2.0;
+            }
         }
         if let Ok(st) = If97::px(p_crit.into(), 0.5.into()) {
             sat_liq.push(st.clone());
@@ -82,15 +101,27 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
         let mut valid_points = 0;
 
         for ds in state.datasets.iter() {
-            if !ds.visible { continue; }
+            if !ds.visible {
+                continue;
+            }
             for s in &ds.points {
                 let (cx, cy) = get_coords(s);
-                if cx.is_nan() || cy.is_nan() { continue; }
+                if cx.is_nan() || cy.is_nan() {
+                    continue;
+                }
 
-                if cx < min_x { min_x = cx; }
-                if cx > max_x { max_x = cx; }
-                if cy < min_y { min_y = cy; }
-                if cy > max_y { max_y = cy; }
+                if cx < min_x {
+                    min_x = cx;
+                }
+                if cx > max_x {
+                    max_x = cx;
+                }
+                if cy < min_y {
+                    min_y = cy;
+                }
+                if cy > max_y {
+                    max_y = cy;
+                }
                 valid_points += 1;
             }
         }
@@ -109,41 +140,68 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
                     std::mem::swap(&mut def_x_max, &mut def_y_max);
                 }
 
-                min_x = def_x_min; max_x = def_x_max;
-                min_y = def_y_min; max_y = def_y_max;
+                min_x = def_x_min;
+                max_x = def_x_max;
+                min_y = def_y_min;
+                max_y = def_y_max;
             } else {
-                min_x = 0.0; max_x = 100.0;
-                min_y = 273.15; max_y = 2273.15;
-                if swap_axes { std::mem::swap(&mut min_x, &mut min_y); std::mem::swap(&mut max_x, &mut max_y); }
+                min_x = 0.0;
+                max_x = 100.0;
+                min_y = 273.15;
+                max_y = 2273.15;
+                if swap_axes {
+                    std::mem::swap(&mut min_x, &mut min_y);
+                    std::mem::swap(&mut max_x, &mut max_y);
+                }
             }
         } else {
             if max_x <= min_x {
-                let pad = if max_x == 0.0 { 1.0 } else { max_x.abs() * 0.2 + 1.0 };
-                min_x -= pad; max_x += pad;
+                let pad = if max_x == 0.0 {
+                    1.0
+                } else {
+                    max_x.abs() * 0.2 + 1.0
+                };
+                min_x -= pad;
+                max_x += pad;
             } else {
                 let pad_x = (max_x - min_x) * 0.1;
-                min_x -= pad_x; max_x += pad_x;
+                min_x -= pad_x;
+                max_x += pad_x;
             }
 
             if max_y <= min_y {
-                let pad = if max_y == 0.0 { 10.0 } else { max_y.abs() * 0.2 + 10.0 };
-                min_y -= pad; max_y += pad;
+                let pad = if max_y == 0.0 {
+                    10.0
+                } else {
+                    max_y.abs() * 0.2 + 10.0
+                };
+                min_y -= pad;
+                max_y += pad;
             } else {
                 let pad_y = (max_y - min_y) * 0.1;
-                min_y -= pad_y; max_y += pad_y;
+                min_y -= pad_y;
+                max_y += pad_y;
             }
         }
     } else {
         let (v_min, v_max, t_min, t_max) = custom_limits;
         if swap_axes {
-            min_x = t_min; max_x = t_max;
-            min_y = v_min; max_y = v_max;
+            min_x = t_min;
+            max_x = t_max;
+            min_y = v_min;
+            max_y = v_max;
         } else {
-            min_x = v_min; max_x = v_max;
-            min_y = t_min; max_y = t_max;
+            min_x = v_min;
+            max_x = v_max;
+            min_y = t_min;
+            max_y = t_max;
         }
-        if min_x >= max_x { max_x = min_x + 1.0; }
-        if min_y >= max_y { max_y = min_y + 1.0; }
+        if min_x >= max_x {
+            max_x = min_x + 1.0;
+        }
+        if min_y >= max_y {
+            max_y = min_y + 1.0;
+        }
     }
 
     if let Ok(mut chart) = ChartBuilder::on(root)
@@ -159,45 +217,72 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
         };
         let desc_t = "Температура (T), К";
 
-        let (x_desc, y_desc) = if swap_axes { (desc_t, desc_val) } else { (desc_val, desc_t) };
-        chart.configure_mesh().x_desc(x_desc).y_desc(y_desc).draw().ok();
+        let (x_desc, y_desc) = if swap_axes {
+            (desc_t, desc_val)
+        } else {
+            (desc_val, desc_t)
+        };
+        chart
+            .configure_mesh()
+            .x_desc(x_desc)
+            .y_desc(y_desc)
+            .draw()
+            .ok();
 
         if show_dome {
             let sat_style = ShapeStyle::from(&bright_purple).stroke_width(2);
             if current_plot == PlotType::PT {
-                chart.draw_series(LineSeries::new(sat_liq.iter().map(|s| get_coords(s)), sat_style)).ok();
+                chart
+                    .draw_series(LineSeries::new(
+                        sat_liq.iter().map(|s| get_coords(s)),
+                        sat_style,
+                    ))
+                    .ok();
             } else {
-                let mut dome_points: Vec<(f64, f64)> = sat_liq.iter().map(|s| get_coords(s)).collect();
-                let mut vap_points: Vec<(f64, f64)> = sat_vap.iter().map(|s| get_coords(s)).collect();
+                let mut dome_points: Vec<(f64, f64)> =
+                    sat_liq.iter().map(|s| get_coords(s)).collect();
+                let mut vap_points: Vec<(f64, f64)> =
+                    sat_vap.iter().map(|s| get_coords(s)).collect();
                 vap_points.reverse();
                 dome_points.extend(vap_points);
 
-                chart.draw_series(LineSeries::new(dome_points, sat_style)).ok();
+                chart
+                    .draw_series(LineSeries::new(dome_points, sat_style))
+                    .ok();
             }
         }
 
         let mut color_idx = 0;
         for ds in state.datasets.iter() {
-            if !ds.visible || ds.points.is_empty() { continue; }
+            if !ds.visible || ds.points.is_empty() {
+                continue;
+            }
 
             let color = get_palette_color(color_idx);
             color_idx += 1;
 
-            chart.draw_series(ds.points.iter().filter_map(|s| {
-                let (cx, cy) = get_coords(s);
-                if cx.is_nan() || cy.is_nan() { return None; }
-                if cx < min_x || cx > max_x || cy < min_y || cy > max_y { return None; }
-                Some(Circle::new((cx, cy), 4, color.filled()))
-            }))
+            chart
+                .draw_series(ds.points.iter().filter_map(|s| {
+                    let (cx, cy) = get_coords(s);
+                    if cx.is_nan() || cy.is_nan() {
+                        return None;
+                    }
+                    if cx < min_x || cx > max_x || cy < min_y || cy > max_y {
+                        return None;
+                    }
+                    Some(Circle::new((cx, cy), 4, color.filled()))
+                }))
                 .unwrap()
                 .label(&ds.name)
                 .legend(move |(x, y)| Circle::new((x, y), 4, color.filled()));
         }
 
-        chart.configure_series_labels()
+        chart
+            .configure_series_labels()
             .position(SeriesLabelPosition::UpperRight)
             .background_style(&WHITE.mix(0.8))
             .border_style(&BLACK)
-            .draw().ok();
+            .draw()
+            .ok();
     }
 }

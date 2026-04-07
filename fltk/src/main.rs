@@ -2,23 +2,23 @@
 
 #![windows_subsystem = "windows"]
 
-mod state;
 mod plot;
+mod state;
 mod ui;
 
-use fltk::{app, dialog, prelude::*, window::Window, browser::CheckBrowser, button::Button};
+use fltk::{app, browser::CheckBrowser, button::Button, dialog, prelude::*, window::Window};
 use std::fs;
-use std::sync::{Arc, Mutex};
 use std::io::Write;
-use tracing::{info, error, debug, warn};
+use std::sync::{Arc, Mutex};
+use tracing::{debug, error, info, warn};
 
 // Импорты из обновленного ядра
-use if97_core::{If97, Region};
 use chrono::Local;
+use if97_core::{If97, Region};
 
+use crate::plot::renderer::render_plot_to_file;
 use crate::state::{AppState, Message, SavedData};
 use crate::ui::MainUI;
-use crate::plot::renderer::render_plot_to_file;
 
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
@@ -67,11 +67,16 @@ fn main() {
             match msg {
                 // --- Одиночный расчет ---
                 Message::CalculateSingle { mode, val_a, val_b } => {
-                    debug!("Запрос на расчет: режим {}, параметры: {}, {}", mode, val_a, val_b);
+                    debug!(
+                        "Запрос на расчет: режим {}, параметры: {}, {}",
+                        mode, val_a, val_b
+                    );
 
                     if val_a.is_nan() || val_b.is_nan() {
                         error!("Введены некорректные данные (NaN)");
-                        main_ui.single_tab.update_result("Ошибка: Введите числовые значения.", true);
+                        main_ui
+                            .single_tab
+                            .update_result("Ошибка: Введите числовые значения.", true);
                         state.last_single_result = None;
                         continue;
                     }
@@ -93,14 +98,28 @@ fn main() {
                         Ok(s) => {
                             info!("Расчет завершен. Регион: {:?}", s.region);
 
-                            let out = format!("РЕЗУЛЬТАТ:\nРегион: {:?}\np = {:.6} МПа\nT = {:.2} К\nv = {:.6} м3/кг\nrho = {:.2} кг/м3\nh = {:.2} кДж/кг\ns = {:.4} кДж/(кг·К)\nu = {:.2} кДж/кг\ncp = {:.4} кДж/(кг·К)\nw = {:.2} м/с", s.region, s.p.inner(), s.t.inner(), s.v.inner(), s.rho.inner(), s.h.inner(), s.s.inner(), s.u.inner(), s.cp.inner(), s.w.inner());
+                            let out = format!(
+                                "РЕЗУЛЬТАТ:\nРегион: {:?}\np = {:.6} МПа\nT = {:.2} К\nv = {:.6} м3/кг\nrho = {:.2} кг/м3\nh = {:.2} кДж/кг\ns = {:.4} кДж/(кг·К)\nu = {:.2} кДж/кг\ncp = {:.4} кДж/(кг·К)\nw = {:.2} м/с",
+                                s.region,
+                                s.p.inner(),
+                                s.t.inner(),
+                                s.v.inner(),
+                                s.rho.inner(),
+                                s.h.inner(),
+                                s.s.inner(),
+                                s.u.inner(),
+                                s.cp.inner(),
+                                s.w.inner()
+                            );
 
                             main_ui.single_tab.update_result(&out, false);
                             state.last_single_result = Some(s);
                         }
                         Err(e) => {
                             warn!("Ядро вернуло ошибку: {}", e);
-                            main_ui.single_tab.update_result(&format!("Ошибка:\n{}", e), true);
+                            main_ui
+                                .single_tab
+                                .update_result(&format!("Ошибка:\n{}", e), true);
                             state.last_single_result = None;
                         }
                     }
@@ -108,9 +127,14 @@ fn main() {
 
                 Message::SaveSinglePoint => {
                     if let Some(st) = &state.last_single_result {
-                        if let Some(name) = dialog::input(150, 200, "Имя для точки:", "Точка 1") {
+                        if let Some(name) = dialog::input(150, 200, "Имя для точки:", "Точка 1")
+                        {
                             if !name.is_empty() {
-                                state.datasets.push(SavedData { name: name.clone(), points: vec![st.clone()], visible: true });
+                                state.datasets.push(SavedData {
+                                    name: name.clone(),
+                                    points: vec![st.clone()],
+                                    visible: true,
+                                });
                                 info!("Точка '{}' сохранена в наборы данных.", name);
                                 main_ui.plot_tab.redraw_plot(&state);
                             }
@@ -122,9 +146,16 @@ fn main() {
 
                 // --- Табличный расчет ---
                 Message::LoadBatchFile => {
-                    let mut chooser = dialog::FileChooser::new(".", "*.{csv,txt}", dialog::FileChooserType::Single, "Открыть файл");
+                    let mut chooser = dialog::FileChooser::new(
+                        ".",
+                        "*.{csv,txt}",
+                        dialog::FileChooserType::Single,
+                        "Открыть файл",
+                    );
                     chooser.show();
-                    while chooser.shown() { app::wait(); }
+                    while chooser.shown() {
+                        app::wait();
+                    }
                     if let Some(filename) = chooser.value(1) {
                         if let Ok(content) = fs::read_to_string(&filename) {
                             info!("Загружен файл: {}", filename);
@@ -137,9 +168,15 @@ fn main() {
                     let current_points = state.datasets[0].points.clone();
                     if current_points.is_empty() {
                         dialog::alert(150, 200, "Таблица пуста!");
-                    } else if let Some(name) = dialog::input(150, 200, "Имя набора данных:", "Набор 1") {
+                    } else if let Some(name) =
+                        dialog::input(150, 200, "Имя набора данных:", "Набор 1")
+                    {
                         if !name.is_empty() {
-                            state.datasets.push(SavedData { name: name.clone(), points: current_points, visible: true });
+                            state.datasets.push(SavedData {
+                                name: name.clone(),
+                                points: current_points,
+                                visible: true,
+                            });
                             info!("Набор '{}' сохранен.", name);
                             main_ui.plot_tab.redraw_plot(&state);
                         }
@@ -153,12 +190,16 @@ fn main() {
                     main_ui.batch_tab.output_table.add("P_MPa\tT_K\tRegion\tx_vapor_fraction\tv_m3_kg\trho_kg_m3\th_kJ_kg\ts_kJ_kgK\tu_kJ_kg\tcp_kJ_kgK\tcv_kJ_kgK\tw_m_s");
 
                     for line in content.lines() {
-                        if line.trim().is_empty() { continue; }
+                        if line.trim().is_empty() {
+                            continue;
+                        }
                         let cleaned = line.replace(';', " ").replace(',', " ");
                         let parts: Vec<&str> = cleaned.split_whitespace().collect();
 
                         if parts.len() >= 2 {
-                            if let (Ok(va), Ok(vb)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
+                            if let (Ok(va), Ok(vb)) =
+                                (parts[0].parse::<f64>(), parts[1].parse::<f64>())
+                            {
                                 let res = match mode {
                                     0 => If97::pt(va.into(), vb.into()),
                                     1 => If97::rhot(va.into(), vb.into()),
@@ -178,20 +219,40 @@ fn main() {
                                             Region::Region5 => "5",
                                             _ => "-",
                                         };
-                                        let xs = if mode == 4 { format!("{:.4}", vb) } else { "-".to_string() };
+                                        let xs = if mode == 4 {
+                                            format!("{:.4}", vb)
+                                        } else {
+                                            "-".to_string()
+                                        };
 
-                                        let fmt = |v: f64, p: usize| if v.is_nan() { "-".into() } else { format!("{:.*}", p, v) };
+                                        let fmt = |v: f64, p: usize| {
+                                            if v.is_nan() {
+                                                "-".into()
+                                            } else {
+                                                format!("{:.*}", p, v)
+                                            }
+                                        };
 
                                         main_ui.batch_tab.output_table.add(&format!(
                                             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t-\t{}",
-                                            fmt(s.p.inner(), 5), fmt(s.t.inner(), 2), rn, xs,
-                                            fmt(s.v.inner(), 6), fmt(s.rho.inner(), 2),
-                                            fmt(s.h.inner(), 4), fmt(s.s.inner(), 4),
-                                            fmt(s.u.inner(), 4), fmt(s.cp.inner(), 4), fmt(s.w.inner(), 2)
+                                            fmt(s.p.inner(), 5),
+                                            fmt(s.t.inner(), 2),
+                                            rn,
+                                            xs,
+                                            fmt(s.v.inner(), 6),
+                                            fmt(s.rho.inner(), 2),
+                                            fmt(s.h.inner(), 4),
+                                            fmt(s.s.inner(), 4),
+                                            fmt(s.u.inner(), 4),
+                                            fmt(s.cp.inner(), 4),
+                                            fmt(s.w.inner(), 2)
                                         ));
                                         new_points.push(s);
                                     }
-                                    Err(_) => main_ui.batch_tab.output_table.add("Ошибка\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-"),
+                                    Err(_) => main_ui
+                                        .batch_tab
+                                        .output_table
+                                        .add("Ошибка\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-"),
                                 }
                             }
                         }
@@ -201,30 +262,56 @@ fn main() {
                 }
 
                 // --- Графики и системные команды ---
-                Message::ChangePlotType(pt) => { state.plot_type = pt; main_ui.plot_tab.redraw_plot(&state); }
-                Message::ToggleDome(show) => { state.show_dome = show; main_ui.plot_tab.redraw_plot(&state); }
-                Message::ToggleSwapAxes(swap) => { state.swap_axes = swap; main_ui.plot_tab.redraw_plot(&state); }
-                Message::SetAutoscale(auto) => { state.autoscale = auto; main_ui.plot_tab.redraw_plot(&state); }
-                Message::ApplyPlotLimits(vmin, vmax, tmin, tmax) => { state.custom_limits = (vmin, vmax, tmin, tmax); main_ui.plot_tab.redraw_plot(&state); }
+                Message::ChangePlotType(pt) => {
+                    state.plot_type = pt;
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::ToggleDome(show) => {
+                    state.show_dome = show;
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::ToggleSwapAxes(swap) => {
+                    state.swap_axes = swap;
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::SetAutoscale(auto) => {
+                    state.autoscale = auto;
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::ApplyPlotLimits(vmin, vmax, tmin, tmax) => {
+                    state.custom_limits = (vmin, vmax, tmin, tmax);
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
 
                 Message::UpdateDataVisibility(vis) => {
                     for (i, v) in vis.into_iter().enumerate() {
-                        if i < state.datasets.len() { state.datasets[i].visible = v; }
+                        if i < state.datasets.len() {
+                            state.datasets[i].visible = v;
+                        }
                     }
                     main_ui.plot_tab.redraw_plot(&state);
                 }
 
                 Message::SelectData => {
-                    let mut win = Window::default().with_size(300, 400).with_label("Выбор данных");
+                    let mut win = Window::default()
+                        .with_size(300, 400)
+                        .with_label("Выбор данных");
                     let mut cb = CheckBrowser::default().with_size(280, 320).with_pos(10, 10);
-                    let mut btn_apply = Button::default().with_size(100, 40).with_label("Применить").with_pos(100, 340);
-                    for ds in &state.datasets { cb.add(&ds.name, ds.visible); }
+                    let mut btn_apply = Button::default()
+                        .with_size(100, 40)
+                        .with_label("Применить")
+                        .with_pos(100, 340);
+                    for ds in &state.datasets {
+                        cb.add(&ds.name, ds.visible);
+                    }
                     win.make_modal(true);
                     win.show();
                     let s_cloned = sender.clone();
                     btn_apply.set_callback(move |b| {
                         let mut vis = Vec::new();
-                        for i in 1..=cb.nitems() { vis.push(cb.checked(i as i32)); }
+                        for i in 1..=cb.nitems() {
+                            vis.push(cb.checked(i as i32));
+                        }
                         s_cloned.send(Message::UpdateDataVisibility(vis));
                         b.window().unwrap().hide();
                     });
@@ -235,11 +322,20 @@ fn main() {
                         .map(|p| format!("{}\\Desktop\\IF97_plot.png", p))
                         .unwrap_or_else(|_| "IF97_plot.png".to_string());
 
-                    let mut chooser = dialog::FileChooser::new(&default_path, "*.png", dialog::FileChooserType::Create, "Экспорт графика");
+                    let mut chooser = dialog::FileChooser::new(
+                        &default_path,
+                        "*.png",
+                        dialog::FileChooserType::Create,
+                        "Экспорт графика",
+                    );
                     chooser.show();
-                    while chooser.shown() { app::wait(); }
+                    while chooser.shown() {
+                        app::wait();
+                    }
                     if let Some(mut filename) = chooser.value(1) {
-                        if !filename.ends_with(".png") { filename.push_str(".png"); }
+                        if !filename.ends_with(".png") {
+                            filename.push_str(".png");
+                        }
                         if render_plot_to_file(&state, &filename, 1920, 1080).is_ok() {
                             info!("График успешно экспортирован в {}", filename);
                             dialog::message(150, 200, "График сохранен!");
@@ -259,13 +355,17 @@ fn main() {
                         &default_name,
                         "Log Files (*.log)",
                         dialog::FileChooserType::Create,
-                        "Сохранить отчет об ошибках"
+                        "Сохранить отчет об ошибках",
                     );
                     chooser.show();
-                    while chooser.shown() { app::wait(); }
+                    while chooser.shown() {
+                        app::wait();
+                    }
 
                     if let Some(mut filename) = chooser.value(1) {
-                        if !filename.ends_with(".log") { filename.push_str(".log"); }
+                        if !filename.ends_with(".log") {
+                            filename.push_str(".log");
+                        }
                         if let Ok(content) = logs_storage.lock() {
                             if std::fs::write(&filename, content.as_str()).is_ok() {
                                 info!("Логи успешно сохранены в {}", filename);
@@ -281,7 +381,11 @@ fn main() {
                 Message::ExportBatchData => {
                     let points = &state.datasets[0].points;
                     if points.is_empty() {
-                        dialog::alert(150, 200, "Нет данных для экспорта! Сначала введите значения в таблицу.");
+                        dialog::alert(
+                            150,
+                            200,
+                            "Нет данных для экспорта! Сначала введите значения в таблицу.",
+                        );
                         continue;
                     }
 
@@ -292,15 +396,20 @@ fn main() {
                         &default_name,
                         "Excel CSV (разделитель ;) (*.csv)\tStandard CSV (разделитель ,) (*.csv)\tText (Tab-separated) (*.txt)",
                         dialog::FileChooserType::Create,
-                        "Сохранить результаты расчета"
+                        "Сохранить результаты расчета",
                     );
                     chooser.show();
-                    while chooser.shown() { app::wait(); }
+                    while chooser.shown() {
+                        app::wait();
+                    }
 
                     if let Some(filename) = chooser.value(1) {
                         // Определяем разделитель по выбранному фильтру
                         let filter = chooser.filter();
-                        let delimiter = if filter.as_ref().map_or(false, |f| f.contains("разделитель ;")) {
+                        let delimiter = if filter
+                            .as_ref()
+                            .map_or(false, |f| f.contains("разделитель ;"))
+                        {
                             b';'
                         } else if filename.ends_with(".txt") {
                             b'\t'
@@ -314,10 +423,32 @@ fn main() {
 
                         if let Ok(mut w) = wtr {
                             // Заголовки (используем типичные для отрасли названия)
-                            let _ = w.write_record(&["P_MPa", "T_K", "Region", "v_m3_kg", "rho_kg_m3", "h_kJ_kg", "s_kJ_kgK", "u_kJ_kg", "cp_kJ_kgK", "w_m_s"]);
+                            let _ = w.write_record(&[
+                                "P_MPa",
+                                "T_K",
+                                "Region",
+                                "v_m3_kg",
+                                "rho_kg_m3",
+                                "h_kJ_kg",
+                                "s_kJ_kgK",
+                                "u_kJ_kg",
+                                "cp_kJ_kgK",
+                                "w_m_s",
+                            ]);
                             for p in points {
                                 // Распаковываем значения через .inner()
-                                let _ = w.write_record(&[format!("{:.6}", p.p.inner()), format!("{:.2}", p.t.inner()), format!("{:?}", p.region), format!("{:.8}", p.v.inner()), format!("{:.3}", p.rho.inner()), format!("{:.4}", p.h.inner()), format!("{:.5}", p.s.inner()), format!("{:.4}", p.u.inner()), format!("{:.4}", p.cp.inner()), format!("{:.2}", p.w.inner())]);
+                                let _ = w.write_record(&[
+                                    format!("{:.6}", p.p.inner()),
+                                    format!("{:.2}", p.t.inner()),
+                                    format!("{:?}", p.region),
+                                    format!("{:.8}", p.v.inner()),
+                                    format!("{:.3}", p.rho.inner()),
+                                    format!("{:.4}", p.h.inner()),
+                                    format!("{:.5}", p.s.inner()),
+                                    format!("{:.4}", p.u.inner()),
+                                    format!("{:.4}", p.cp.inner()),
+                                    format!("{:.2}", p.w.inner()),
+                                ]);
                             }
                             let _ = w.flush();
                             info!("Таблица успешно экспортирована: {}", filename);
