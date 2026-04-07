@@ -2,7 +2,7 @@
 use yew::prelude::*;
 use crate::ui::{single_calc::SingleCalcTab, table_calc::TableCalcTab, plots::PlotsTab, about_logs::AboutLogsTab};
 use crate::types::{SavedItem, AppContext, PersistentState, StateContext};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 #[derive(Clone, PartialEq)]
 pub enum Tab { Single, Table, Plots, About }
@@ -15,6 +15,7 @@ pub fn app() -> Html {
     let persistent_state = use_state(|| PersistentState {
         s_mode: "pt".to_string(), s_v1: String::new(), s_v2: String::new(), s_res: None, s_error: None,
         t_input: String::new(), t_mode: "pt".to_string(), t_res: Vec::new(),
+        t_gen_params: HashMap::new(),
         right_sidebar_open: false,
         plot_selected: HashSet::new(),
         is_dark_theme: false,
@@ -25,6 +26,7 @@ pub fn app() -> Html {
         Callback::from(move |_| active_tab.set(tab.clone()))
     };
 
+    // ИСПРАВЛЕНИЕ ЗДЕСЬ: Возвращен класс "tab-active" для обычных (не-флекс) вкладок
     let get_tab_class = |tab: Tab, is_flex: bool| {
         if *active_tab == tab { if is_flex { "tab-active-flex" } else { "tab-active" } } else { "tab-hidden" }
     };

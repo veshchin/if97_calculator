@@ -1,7 +1,7 @@
 /* File: src/types.rs */
 use if97_core::WaterState;
 use yew::UseStateHandle;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SavedPoint {
@@ -41,6 +41,16 @@ pub struct ThermodynamicPoint {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChartType { Ts, Hs, Ph, Tv, Pv, Pt, Ps, Th }
 
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct GenParams {
+    pub v1_from: String,
+    pub v1_to: String,
+    pub v1_step: String,
+    pub v2_from: String,
+    pub v2_to: String,
+    pub v2_step: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PersistentState {
     pub s_mode: String,
@@ -51,9 +61,10 @@ pub struct PersistentState {
     pub t_input: String,
     pub t_mode: String,
     pub t_res: Vec<Result<WaterState, String>>,
+    pub t_gen_params: HashMap<String, GenParams>,
     pub right_sidebar_open: bool,
     pub plot_selected: HashSet<String>,
-    pub is_dark_theme: bool, // Поле logs удалено
+    pub is_dark_theme: bool,
 }
 
 pub type StateContext = UseStateHandle<PersistentState>;

@@ -1,4 +1,3 @@
-/* File: src/ui/table_calc.rs */
 use yew::prelude::*;
 use web_sys::{HtmlTextAreaElement, HtmlSelectElement, HtmlInputElement, MouseEvent};
 use if97_core::If97;
@@ -21,6 +20,17 @@ fn is_same_state(s1: &WaterState, s2: &WaterState) -> bool {
 
 fn is_same_table(t1: &[WaterState], t2: &[WaterState]) -> bool {
     t1.len() == t2.len() && t1.iter().zip(t2.iter()).all(|(s1, s2)| is_same_state(s1, s2))
+}
+
+fn get_mode_labels(mode: &str) -> (&'static str, &'static str) {
+    match mode {
+        "pt" => ("p (МПа)", "T (K)"),
+        "rhot" => ("rho (кг/м³)", "T (K)"),
+        "px" => ("p (МПа)", "x"),
+        "ps" => ("p (МПа)", "s (кДж/кгK)"),
+        "ph" => ("p (МПа)", "h (кДж/кг)"),
+        _ => ("Параметр 1", "Параметр 2"),
+    }
 }
 
 fn calculate_table(mode: &str, input: &str) -> Vec<Result<WaterState, String>> {
@@ -74,6 +84,9 @@ pub fn table_calc_tab() -> Html {
     let custom_name = use_state(String::new);
     let save_status = use_state(|| Option::<String>::None);
 
+    let (l1, l2) = get_mode_labels(&s.t_mode);
+    let gen_params = s.t_gen_params.get(&s.t_mode).cloned().unwrap_or_default();
+
     let on_mode = {
         let state_ctx = state_ctx.clone(); let app_ctx = app_ctx.clone();
         let custom_name = custom_name.clone(); let save_status = save_status.clone();
@@ -92,6 +105,76 @@ pub fn table_calc_tab() -> Html {
             if let Some(textarea) = e.target_dyn_into::<HtmlTextAreaElement>() {
                 let mut new_s = (*state_ctx).clone(); new_s.t_input = textarea.value();
                 state_ctx.set(process_table_state(new_s, &app_ctx, &custom_name)); save_status.set(None);
+            }
+        })
+    };
+
+    let on_gen_input = |field: &'static str| {
+        let state_ctx = state_ctx.clone();
+        Callback::from(move |e: InputEvent| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                let mut new_s = (*state_ctx).clone();
+                let mut params = new_s.t_gen_params.get(&new_s.t_mode).cloned().unwrap_or_default();
+                match field {
+                    "v1_from" => params.v1_from = input.value(),
+                    "v1_to" => params.v1_to = input.value(),
+                    "v1_step" => params.v1_step = input.value(),
+                    "v2_from" => params.v2_from = input.value(),
+                    "v2_to" => params.v2_to = input.value(),
+                    "v2_step" => params.v2_step = input.value(),
+                    _ => {}
+                }
+                new_s.t_gen_params.insert(new_s.t_mode.clone(), params);
+                state_ctx.set(new_s);
+            }
+        })
+    };
+
+    let on_generate = {
+        let state_ctx = state_ctx.clone();
+        let app_ctx = app_ctx.clone();
+        let custom_name = custom_name.clone();
+        Callback::from(move |_| {
+            let mut new_s = (*state_ctx).clone();
+            let params = new_s.t_gen_params.get(&new_s.t_mode).cloned().unwrap_or_default();
+
+            let parse_range = |f_str: &str, t_str: &str, s_str: &str| -> Option<(f64, f64, f64, usize)> {
+                let f = f_str.replace(',', ".").parse::<f64>().ok()?;
+                let t = t_str.replace(',', ".").parse::<f64>().unwrap_or(f);
+                let s = s_str.replace(',', ".").parse::<f64>().unwrap_or(1.0);
+
+                let steps = if s == 0.0 || (t > f && s < 0.0) || (t < f && s > 0.0) {
+                    0
+                } else {
+                    ((t - f) / s + 1e-9).max(0.0).floor() as usize
+                };
+                Some((f, t, s, steps))
+            };
+
+            if let (Some((f1, _, s1, steps1)), Some((f2, _, s2, steps2))) = (
+                parse_range(&params.v1_from, &params.v1_to, &params.v1_step),
+                parse_range(&params.v2_from, &params.v2_to, &params.v2_step)
+            ) {
+                let mut added_text = String::new();
+
+                for i in 0..=steps1 {
+                    let val1 = f1 + (i as f64) * s1;
+                    let val1_clean = (val1 * 1_000_000_000.0).round() / 1_000_000_000.0;
+
+                    for j in 0..=steps2 {
+                        let val2 = f2 + (j as f64) * s2;
+                        let val2_clean = (val2 * 1_000_000_000.0).round() / 1_000_000_000.0;
+                        added_text.push_str(&format!("{};{}\n", val1_clean, val2_clean));
+                    }
+                }
+
+                if !new_s.t_input.is_empty() && !new_s.t_input.ends_with('\n') {
+                    new_s.t_input.push('\n');
+                }
+                new_s.t_input.push_str(&added_text);
+
+                let next_s = process_table_state(new_s, &app_ctx, &custom_name);
+                state_ctx.set(next_s);
             }
         })
     };
@@ -177,6 +260,7 @@ pub fn table_calc_tab() -> Html {
 
     let valid_states: Vec<WaterState> = s.t_res.iter().filter_map(|r| r.clone().ok()).collect();
     let has_valid_results = !valid_states.is_empty();
+
     let is_already_saved = if has_valid_results {
         app_ctx.iter().any(|i| if let SavedItem::Table(t) = i { is_same_table(&t.states, &valid_states) } else { false })
     } else { false };
@@ -185,34 +269,66 @@ pub fn table_calc_tab() -> Html {
         <div style="position: relative; height: 100%; overflow: hidden; display: flex; flex-direction: column;">
             <div class="table-calc-container fade-in" style="flex-grow: 1; overflow-y: auto; padding-bottom: 20px; display: flex; flex-direction: column;">
 
-                <div class="card instruction-card" style="margin-bottom: 15px;">
-                    <h2 style="margin: 0; margin-bottom: 5px;">{"Табличный расчет"}</h2>
-                    <p class="text-muted" style="margin: 0;">{"Вставьте столбцы с данными из Excel/TXT или загрузите файл."}</p>
+                // ШАПКА + РЕЖИМ + ОПЕРАЦИИ С ФАЙЛАМИ
+                <div class="card instruction-card" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+                    <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                        <div>
+                            <h2 style="margin: 0; margin-bottom: 5px;">{"Табличный расчет"}</h2>
+                            <p class="text-muted" style="margin: 0; font-size: 0.9rem;">{"Вставьте данные или сгенерируйте их."}</p>
+                        </div>
+                        <div style="width: 1px; height: 35px; background: var(--border); margin: 0 5px;"></div>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <label style="font-weight: 500; font-size: 0.95rem; white-space: nowrap;">{"Режим:"}</label>
+                            <select class="styled-select" value={s.t_mode.clone()} onchange={on_mode} style="padding: 6px 12px; font-size: 0.95rem; min-width: 90px;">
+                                <option value="pt">{"p-T"}</option>
+                                <option value="rhot">{"rho-T"}</option>
+                                <option value="px">{"p-x"}</option>
+                                <option value="ps">{"p-s"}</option>
+                                <option value="ph">{"p-h"}</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-outline btn-sm" onclick={on_load_file}>{"📂 Открыть"}</button>
+                        <button class="btn btn-success btn-sm" onclick={on_export_csv} disabled={s.t_res.is_empty()} style={if s.t_res.is_empty() { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>{"💾 CSV"}</button>
+                        <div style="width: 1px; height: 24px; background: var(--border); margin: 0 5px;"></div>
+
+                        <div style="position: relative; display: flex; gap: 10px; align-items: center;">
+                            <input type="text" class="styled-input" style="width: 200px; padding: 6px 10px; font-size: 0.9rem;" value={(*custom_name).clone()} oninput={on_name_input} placeholder="Имя таблицы..." disabled={!has_valid_results} />
+                            <button class={classes!("btn", "btn-sm", if is_already_saved { "btn-primary" } else { "btn-success" })} onclick={on_save_to_plots} disabled={!has_valid_results} style={if !has_valid_results { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>
+                                { if is_already_saved { "Обновить" } else { "Сохранить" } }
+                            </button>
+                            { if let Some(status) = &*save_status { html! { <div class="fade-in" style="position: absolute; top: -18px; right: 0; color: #198754; font-size: 0.75rem; font-weight: 600;">{ status }</div> } } else { html! {} } }
+                        </div>
+                    </div>
                 </div>
 
-                <div class="toolbar">
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <label style="font-weight: 500;">{"Режим:"}</label>
-                        <select class="styled-select" value={s.t_mode.clone()} onchange={on_mode} style="min-width: 150px;">
-                            <option value="pt">{"p-T"}</option>
-                            <option value="rhot">{"rho-T"}</option>
-                            <option value="px">{"p-x"}</option>
-                            <option value="ps">{"p-s"}</option>
-                            <option value="ph">{"p-h"}</option>
-                        </select>
+                // КОМПАКТНЫЙ БЛОК ГЕНЕРАЦИИ (одна строка)
+                <div class="card" style="margin-bottom: 15px; padding: 10px 15px; background: var(--hover-bg); display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <div style="font-weight: 600; font-size: 0.95rem; white-space: nowrap; color: var(--primary);">{"Генератор"}</div>
+
+                    <div style="display: flex; align-items: center; gap: 6px; flex-grow: 1; min-width: 250px;">
+                        <span style="font-weight: 500; font-size: 0.85rem; color: var(--text-muted); width: 85px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title={l1}>{ l1 }</span>
+                        <input class="styled-input" placeholder="От" value={gen_params.v1_from.clone()} oninput={on_gen_input("v1_from")} style="flex-grow: 1; width: 10px; min-width: 40px; padding: 6px 8px; font-size: 0.85rem;" />
+                        <input class="styled-input" placeholder="До" value={gen_params.v1_to.clone()} oninput={on_gen_input("v1_to")} style="flex-grow: 1; width: 10px; min-width: 40px; padding: 6px 8px; font-size: 0.85rem;" />
+                        <input class="styled-input" placeholder="Шаг" value={gen_params.v1_step.clone()} oninput={on_gen_input("v1_step")} style="flex-grow: 1; width: 10px; min-width: 40px; padding: 6px 8px; font-size: 0.85rem;" />
                     </div>
-                    <button class="btn btn-outline" onclick={on_load_file}>{"📂 Открыть"}</button>
-                    <button class="btn btn-success" onclick={on_export_csv} disabled={s.t_res.is_empty()} style={if s.t_res.is_empty() { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>{"💾 CSV"}</button>
-                    <div class="spacer"></div>
-                    <div style="display: flex; gap: 10px; align-items: center; background: var(--hover-bg); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
-                        <input type="text" class="styled-input" style="width: 220px; padding: 6px 10px;" value={(*custom_name).clone()} oninput={on_name_input} placeholder="Имя для этой таблицы..." disabled={!has_valid_results} />
-                        <button class={classes!("btn", "btn-sm", if is_already_saved { "btn-primary" } else { "btn-success" })} onclick={on_save_to_plots} disabled={!has_valid_results} style={if !has_valid_results { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>
-                            { if is_already_saved { "Обновить" } else { "Сохранить" } }
-                        </button>
-                        { if let Some(status) = &*save_status { html! { <span class="fade-in" style="color: #198754; font-size: 0.9rem; font-weight: 500;">{ status }</span> } } else { html! {} } }
+
+                    <div style="width: 1px; height: 24px; background: var(--border);"></div>
+
+                    <div style="display: flex; align-items: center; gap: 6px; flex-grow: 1; min-width: 250px;">
+                        <span style="font-weight: 500; font-size: 0.85rem; color: var(--text-muted); width: 85px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title={l2}>{ l2 }</span>
+                        <input class="styled-input" placeholder="От" value={gen_params.v2_from.clone()} oninput={on_gen_input("v2_from")} style="flex-grow: 1; width: 10px; min-width: 40px; padding: 6px 8px; font-size: 0.85rem;" />
+                        <input class="styled-input" placeholder="До" value={gen_params.v2_to.clone()} oninput={on_gen_input("v2_to")} style="flex-grow: 1; width: 10px; min-width: 40px; padding: 6px 8px; font-size: 0.85rem;" />
+                        <input class="styled-input" placeholder="Шаг" value={gen_params.v2_step.clone()} oninput={on_gen_input("v2_step")} style="flex-grow: 1; width: 10px; min-width: 40px; padding: 6px 8px; font-size: 0.85rem;" />
                     </div>
+
+                    <button class="btn btn-primary btn-sm" onclick={on_generate} style="white-space: nowrap; padding: 6px 12px; margin-left: auto;">{"➕ Добавить"}</button>
                 </div>
-                <div class="split-view" style="margin-top: 15px; flex-grow: 1;">
+
+                // ТАБЛИЦА РЕЗУЛЬТАТОВ И ВВОД
+                <div class="split-view" style="flex-grow: 1;">
                     <div class="split-left" style="width: 20%;"><textarea class="raw-data-area" oninput={on_input} value={s.t_input.clone()} placeholder="Ввод данных..."></textarea></div>
                     <div class="split-right" style="width: 80%; overflow-x: auto;">
                         <div class="table-container">

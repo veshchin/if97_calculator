@@ -28,8 +28,8 @@ Icon
 .env
 .env.*wasm/src-tauri/gen/
 
-*gptree*
-*icon*
-*.png
-*.csv
-wasm/src-tauri/gen
+#*gptree*
+#*icon*
+#*.png
+#*.csv
+#*gen*

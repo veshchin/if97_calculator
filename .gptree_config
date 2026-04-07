@@ -1,0 +1,27 @@
+# GPTree Local Config
+version: 2
+
+# Whether to use .gitignore
+useGitIgnore: true
+# File types to include (e.g., .py,.js)
+includeFileTypes: *
+# File types to exclude when includeFileTypes is '*'
+excludeFileTypes: 
+# Output file name
+outputFile: gptree_output.txt
+# Whether to output the file locally or relative to the project directory
+outputFileLocally: true
+# Whether to copy the output to the clipboard
+copyToClipboard: false
+# Whether to use safe mode (prevent overly large files from being combined)
+safeMode: true
+# Whether to store the files chosen in the config file (--save, -s)
+storeFilesChosen: true
+# Whether to include line numbers in the output (--line-numbers, -n)
+lineNumbers: false
+# Whether to show ignored files in the directory tree
+showIgnoredInTree: false
+# Whether to show only default ignored files in the directory tree while still respecting gitignore
+showDefaultIgnoredInTree: false
+# Previously selected files (when using the -s or --save flag previously)
+previousFiles: core/src/state.rs,core/Cargo.toml,core/src/models/region_3.rs,wasm/src/main.rs,core/src/models/region_5.rs,wasm/src/ui/about_logs.rs,core/src/models/mod.rs,fltk/src/main.rs,Cargo.toml,wasm/src-tauri/build.rs,README.md,wasm/src/plot.rs,fltk/src/lib.rs,core/src/constants.rs,core/tests/integration_csv_test.rs,wasm/src-tauri/src/lib.rs,fltk/src/ui/plot_tab.rs,wasm/src/ui/plots.rs,fltk/src/ui/single.rs,wasm/src/logger.rs,core/src/models/boundaries.rs,wasm/style.css,fltk/src/state.rs,wasm/src/app.rs,core/src/calculator.rs,core/src/models/region_1.rs,fltk/src/ui/batch.rs,wasm/index.html,wasm/src/ui/single_calc.rs,wasm/src-tauri/Cargo.toml,wasm/src-tauri/capabilities/default.json,fltk/Cargo.toml,core/src/lib.rs,wasm/Cargo.toml,wasm/src/ui/mod.rs,core/src/units.rs,Cargo.lock,wasm/src/ui/table_calc.rs,core/src/models/math.rs,fltk/src/ui/about.rs,.github/workflows/release.yml,wasm/src-tauri/src/main.rs,wasm/src/types.rs,core/src/tables.rs,core/build.rs,core/src/models/region_2.rs,core/src/models/traits.rs,core/src/tests.rs,wasm/src-tauri/tauri.conf.json,core/src/models/region_2_meta.rs,fltk/src/ui/mod.rs,core/src/errors.rs,core/src/models/region_4.rs,fltk/src/plot/renderer.rs,fltk/src/plot/mod.rs
