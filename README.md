@@ -16,6 +16,10 @@
 cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps --open
 ```
 
+Проектная (человекочитаемая) документация:
+
+- `docs/PROJECT.md`
+
 ## Состав проекта
 
 - `core/` — вычислительное ядро `if97_core`
@@ -121,4 +125,4 @@ kubectl apply -f service/k8s/
 
 Релизный workflow находится в `.github/workflows/release.yml`.
 
-Он проверяет workspace, собирает Tauri-приложение, FLTK-бинарники и публикует артефакты по тегу формата `v*`.
+Он проверяет workspace, собирает Tauri-приложение, FLTK-бинарники и публикует артефакты по тегу формата `vMAJOR.MINOR.PATCH` (например, `v1.0.0`).
