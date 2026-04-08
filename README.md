@@ -16,10 +16,6 @@
 cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps --open
 ```
 
-Проектная (человекочитаемая) документация:
-
-- `docs/PROJECT.md`
-
 ## Состав проекта
 
 - `core/` — вычислительное ядро `if97_core`
