@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: if97-calculator-service-loadtest
+  labels:
+    app.kubernetes.io/name: if97-calculator-service
+    app.kubernetes.io/component: loadtest
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: if97-calculator-service
+        app.kubernetes.io/component: loadtest
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: loadtest
+          image: ghcr.io/veshchin/if97_calculator_service:0.1.4
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/grpc_loadtest"]
+          args:
+            - "--addr"
+            - "if97-calculator-service:50051"
+            - "--streams"
+            - "4"
+            - "--batches"
+            - "1000"
+            - "--batch-size"
+            - "2048"
+            - "--in-flight"
+            - "4"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+

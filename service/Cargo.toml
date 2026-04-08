@@ -4,13 +4,31 @@ version = "0.1.4"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.8.6", features = ["macros"] }
-tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "net"] }
-tower-http = { version = "0.6.6", features = ["cors", "trace", "compression-gzip"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-csv = "1.3"
+tokio = { version = "1.48.0", features = ["rt-multi-thread", "net", "time", "sync", "signal"] }
+tokio-stream = "0.1.17"
+tonic = { version = "0.12.3", features = ["transport"] }
+tonic-health = "0.12.3"
+prost = "0.13.5"
+rayon = "1.11.0"
+num_cpus = "1.17.0"
+if97_core = { path = "../core" }
+serde = { version = "1.0", features = ["derive"], optional = true }
+csv = { version = "1.3", optional = true }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-if97_core = { path = "../core" }
-if97_app_api = { path = "../if97_app_api" }
+
+[features]
+default = []
+loadtest = ["dep:serde", "dep:csv"]
+
+[[bin]]
+name = "if97_loadtest"
+path = "src/bin/if97_loadtest.rs"
+required-features = ["loadtest"]
+
+[[bin]]
+name = "grpc_loadtest"
+path = "src/bin/grpc_loadtest.rs"
+
+[build-dependencies]
+tonic-build = "0.12.3"

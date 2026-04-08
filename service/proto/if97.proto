@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package if97.v1;
+
+service If97Service {
+  rpc CalculatePt(stream PtBatchRequest) returns (stream PtBatchResponse);
+}
+
+message PtBatchRequest {
+  uint64 batch_id = 1;
+  repeated double p = 2;
+  repeated double t = 3;
+}
+
+message PtBatchResponse {
+  uint64 batch_id = 1;
+  repeated double h = 2;
+  repeated uint32 status = 3;
+  uint32 batch_error_code = 4;
+  string batch_error_message = 5;
+}

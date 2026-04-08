@@ -17,32 +17,77 @@ spec:
         app.kubernetes.io/name: if97-calculator-service
         app.kubernetes.io/component: api
     spec:
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: if97-calculator-service
       containers:
         - name: api
           image: ghcr.io/veshchin/if97_calculator_service:0.1.4
           imagePullPolicy: IfNotPresent
           ports:
-            - name: http
-              containerPort: 8080
+            - name: grpc
+              containerPort: 50051
           env:
-            - name: IF97_SERVICE_ADDR
-              value: 0.0.0.0:8080
+            - name: IF97_GRPC_ADDR
+              value: 0.0.0.0:50051
+            - name: RUST_LOG
+              value: info
+            - name: IF97_KERNEL
+              value: core
+            - name: IF97_IO_THREADS
+              value: "2"
+            - name: IF97_CPU_THREADS
+              value: "2"
+            - name: IF97_MAX_IN_FLIGHT_PER_CONN
+              value: "2"
+            - name: IF97_MAX_IN_FLIGHT_GLOBAL
+              value: "2"
+            - name: IF97_MAX_BATCH_LEN
+              value: "200000"
+            - name: IF97_GRPC_MAX_MSG_BYTES
+              value: "33554432"
+            - name: IF97_DRAIN_SECS
+              value: "2"
           readinessProbe:
-            httpGet:
-              path: /healthz
-              port: http
-            initialDelaySeconds: 2
-            periodSeconds: 10
+            grpc:
+              port: 50051
+              service: if97.v1.If97Service
+            initialDelaySeconds: 1
+            periodSeconds: 5
+            timeoutSeconds: 1
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: http
+            grpc:
+              port: 50051
+              service: if97.v1.If97Service
             initialDelaySeconds: 10
-            periodSeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 1
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 3"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: "2"
+              memory: 1Gi
             limits:
-              cpu: 1000m
-              memory: 512Mi
+              cpu: "2"
+              memory: 1Gi
+      volumes:
+        - name: tmp
+          emptyDir: {}

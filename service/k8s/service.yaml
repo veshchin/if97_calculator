@@ -9,6 +9,7 @@ spec:
   selector:
     app.kubernetes.io/name: if97-calculator-service
   ports:
-    - name: http
-      port: 80
-      targetPort: http
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      appProtocol: grpc
