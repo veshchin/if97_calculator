@@ -14,3 +14,18 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+
+# Trunk по умолчанию собирает Web/WASM часть в debug-профиле, что заметно
+# замедляет отрисовку графиков. Даем оптимизации только нужным пакетам, чтобы
+# ускорить runtime без превращения dev-сборки в полный release.
+[profile.dev.package.if97_calculator_web]
+opt-level = 2
+
+[profile.dev.package.plotters]
+opt-level = 2
+
+[profile.dev.package.plotters-backend]
+opt-level = 2
+
+[profile.dev.package.plotters-canvas]
+opt-level = 2

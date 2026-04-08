@@ -3,7 +3,10 @@ use crate::tauri_api;
 use crate::types::{AppContext, ChartType, SavedItem, StateContext};
 use gloo_timers::callback::Timeout;
 use if97_app_api::{DomeRequest, PlotPoint};
+use std::collections::HashMap;
+use std::cell::RefCell;
 use std::rc::Rc;
+use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::{HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElement, MouseEvent, WheelEvent};
 use yew::prelude::*;
 
@@ -115,9 +118,13 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let swap_axes = use_state(|| false);
     let show_dome = use_state(|| true);
     let ranges = use_state(PlotRanges::default);
+    let resize_tick = use_state(|| 0u32);
     let is_dragging = use_state(|| false);
     let last_mouse = use_state(|| (0.0, 0.0));
-    let dome_points = use_state(Vec::<PlotPoint>::new);
+    let dome_points = use_mut_ref(|| Rc::<Vec<PlotPoint>>::new(Vec::new()));
+    let dome_rev = use_state(|| 0u32);
+    let dome_req_id = use_mut_ref(|| 0u64);
+    let dome_cache = use_mut_ref(|| HashMap::<(ChartType, bool), Rc<Vec<PlotPoint>>>::new());
     let pending_ranges = use_mut_ref(|| Option::<PlotRanges>::None);
     let pending_ranges_update = use_mut_ref(|| Option::<Timeout>::None);
 
@@ -145,6 +152,56 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                 }
             });
             *pending_ranges_update.borrow_mut() = Some(timeout);
+        }
+    });
+
+    use_effect({
+        let resize_tick = resize_tick.clone();
+        move || {
+            // Обработчик ресайза окна нужен, чтобы подгонять внутренний буфер canvas и
+            // перерисовывать график без искажений.
+            let mut cleanup: Option<(
+                web_sys::Window,
+                Closure<dyn FnMut(web_sys::Event)>,
+                Rc<RefCell<Option<Timeout>>>,
+            )> = None;
+
+            if let Some(window) = web_sys::window() {
+                let pending = Rc::new(RefCell::new(None::<Timeout>));
+                let pending_for_cb = pending.clone();
+                let resize_tick_for_cb = resize_tick.clone();
+                let closure = Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_| {
+                    if pending_for_cb.borrow().is_some() {
+                        return;
+                    }
+
+                    let pending_for_timer = pending_for_cb.clone();
+                    let resize_tick_for_timer = resize_tick_for_cb.clone();
+                    let timeout = Timeout::new(80, move || {
+                        pending_for_timer.borrow_mut().take();
+                        resize_tick_for_timer.set(*resize_tick_for_timer + 1);
+                    });
+                    *pending_for_cb.borrow_mut() = Some(timeout);
+                }));
+
+                let _ = window.add_event_listener_with_callback(
+                    "resize",
+                    closure.as_ref().unchecked_ref(),
+                );
+
+                cleanup = Some((window, closure, pending));
+            }
+
+            move || {
+                if let Some((window, closure, pending)) = cleanup {
+                    pending.borrow_mut().take();
+                    let _ = window.remove_event_listener_with_callback(
+                        "resize",
+                        closure.as_ref().unchecked_ref(),
+                    );
+                    drop(closure);
+                }
+            }
         }
     });
 
@@ -176,24 +233,54 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
 
     use_effect_with((*chart_type, *swap_axes, *show_dome), {
         let dome_points = dome_points.clone();
+        let dome_rev = dome_rev.clone();
+        let dome_req_id = dome_req_id.clone();
+        let dome_cache = dome_cache.clone();
         move |(chart_type, swap_axes, show_dome)| {
+            let req_id = {
+                let mut id = dome_req_id.borrow_mut();
+                *id += 1;
+                *id
+            };
+
             if !*show_dome {
-                dome_points.set(Vec::new());
+                *dome_points.borrow_mut() = Rc::new(Vec::new());
             } else {
-                let dome_points = dome_points.clone();
-                let chart_type = *chart_type;
-                let swap_axes = *swap_axes;
-                wasm_bindgen_futures::spawn_local(async move {
-                    match tauri_api::calculate_dome(DomeRequest {
-                        chart_type,
-                        swap_axes,
-                    })
-                    .await
-                    {
-                        Ok(points) => dome_points.set(points),
-                        Err(error) => tracing::error!("ошибка расчета купола: {error}"),
-                    }
-                });
+                let cache_key = (*chart_type, *swap_axes);
+                if let Some(cached) = dome_cache.borrow().get(&cache_key) {
+                    *dome_points.borrow_mut() = cached.clone();
+                } else {
+                    // Не показываем "старый" купол, пока не приехали точки для новой диаграммы.
+                    // Иначе при переключении диаграмм/осей на короткое время виден мусор.
+                    *dome_points.borrow_mut() = Rc::new(Vec::new());
+
+                    let dome_points = dome_points.clone();
+                    let dome_rev = dome_rev.clone();
+                    let dome_req_id = dome_req_id.clone();
+                    let dome_cache = dome_cache.clone();
+                    let chart_type = *chart_type;
+                    let swap_axes = *swap_axes;
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match tauri_api::calculate_dome(DomeRequest {
+                            chart_type,
+                            swap_axes,
+                        })
+                        .await
+                        {
+                            Ok(points) => {
+                                let points = Rc::new(points);
+                                dome_cache
+                                    .borrow_mut()
+                                    .insert((chart_type, swap_axes), points.clone());
+                                if *dome_req_id.borrow() == req_id {
+                                    *dome_points.borrow_mut() = points;
+                                    dome_rev.set(*dome_rev + 1);
+                                }
+                            }
+                            Err(error) => tracing::error!("ошибка расчета купола: {error}"),
+                        }
+                    });
+                }
             }
 
             || ()
@@ -204,37 +291,67 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         (
             canvas_ref.clone(),
             props.active,
+            *resize_tick,
             *chart_type,
             *swap_axes,
             *show_dome,
             *ranges,
-            dome_points.clone(),
+            *dome_rev,
             series_list.clone(),
         ),
-        |(
-            canvas_ref,
-            is_active,
-            chart_type,
-            swap_axes,
-            show_dome,
-            ranges,
-            dome_points,
-            series_list,
-        )| {
-            if *is_active && canvas_ref.cast::<HtmlCanvasElement>().is_some() {
-                let canvas_id = "plot-area".to_string();
-                let (x_var, y_var) = get_axes(*chart_type, *swap_axes);
-                let opts = ChartOptions {
-                    show_dome: *show_dome,
-                    x_range: ranges.get(x_var),
-                    y_range: ranges.get(y_var),
-                };
-                if let Err(error) = draw_diagram(&canvas_id, &opts, dome_points.as_ref(), series_list.as_ref()) {
-                    tracing::error!("ошибка отрисовки графика: {error}");
-                }
-            }
+        {
+            let dome_points = dome_points.clone();
+            move |(
+                canvas_ref,
+                is_active,
+                _resize_tick,
+                chart_type,
+                swap_axes,
+                show_dome,
+                ranges,
+                _dome_rev,
+                series_list,
+            )| {
+                if *is_active {
+                    if let Some(canvas) = canvas_ref.cast::<HtmlCanvasElement>() {
+                    // Подгоняем внутренний буфер canvas под текущий размер элемента, чтобы:
+                    // 1) не было искажений/letterbox при CSS-скейле,
+                    // 2) график оставался резким на Retina.
+                    let css_w = canvas.client_width() as f64;
+                    let css_h = canvas.client_height() as f64;
+                    if css_w > 0.0 && css_h > 0.0 {
+                        let dpr = web_sys::window()
+                            .map(|w| w.device_pixel_ratio())
+                            .unwrap_or(1.0)
+                            .max(1.0)
+                            .min(2.0);
+                        let next_w = (css_w * dpr).round() as u32;
+                        let next_h = (css_h * dpr).round() as u32;
+                        if canvas.width() != next_w {
+                            canvas.set_width(next_w);
+                        }
+                        if canvas.height() != next_h {
+                            canvas.set_height(next_h);
+                        }
+                    }
 
-            || ()
+                    let (x_var, y_var) = get_axes(*chart_type, *swap_axes);
+                    let opts = ChartOptions {
+                        show_dome: *show_dome,
+                        x_range: ranges.get(x_var),
+                        y_range: ranges.get(y_var),
+                    };
+                    let dome_points = dome_points.borrow();
+                    if let Err(error) =
+                        draw_diagram(&canvas, &opts, dome_points.as_slice(), series_list.as_ref())
+                    {
+                        tracing::error!("ошибка отрисовки графика: {error}");
+                    }
+                    }
+                }
+
+                || ()
+            }
         },
     );
 
@@ -423,7 +540,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         }
     };
 
-    html! {
+            html! {
         <div class="charts-container fade-in" style="display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; position: relative;">
             <div class="top-toolbar" style="display: flex; flex-wrap: wrap; gap: 15px; padding: 10px 15px; background: var(--card-bg); border-bottom: 1px solid var(--border); align-items: center; flex-shrink: 0; z-index: 5;">
                 <select class="styled-select" onchange={on_chart_type_change} style="padding: 6px 10px;">
@@ -450,7 +567,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
             </div>
 
             <div style="flex-grow: 1; position: relative; overflow: hidden; background: var(--bg-color);">
-                <canvas id="plot-area" ref={canvas_ref} width="1800" height="1200" style="width: 100%; height: 100%; object-fit: contain; cursor: crosshair;" onwheel={on_wheel} onmousedown={on_mouse_down} onmouseup={on_mouse_up} onmousemove={on_mouse_move} onmouseleave={on_mouse_leave}></canvas>
+                <canvas id="plot-area" ref={canvas_ref} width="1800" height="1200" style="width: 100%; height: 100%; display: block; cursor: crosshair;" onwheel={on_wheel} onmousedown={on_mouse_down} onmouseup={on_mouse_up} onmousemove={on_mouse_move} onmouseleave={on_mouse_leave}></canvas>
 
                 <div style={format!("position: absolute; top: 0; left: 0; bottom: 0; width: 320px; background: var(--card-bg); border-right: 1px solid var(--border); box-shadow: 4px 0 15px rgba(0,0,0,0.15); transform: translateX({}); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); display: flex; flex-direction: column; z-index: 50;", if state_ctx.right_sidebar_open { "0" } else { "-120%" })}>
                     <div style="padding: 15px; border-bottom: 1px solid var(--border); background: var(--hover-bg);">

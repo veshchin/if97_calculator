@@ -3,7 +3,7 @@ use if97_app_api::{
     DiagramKind, DomeRequest, InputMode, LogEntryDto, PlotPoint, SingleCalcRequest, StateDto,
     TableCalcRequest, TableRowResult,
 };
-use if97_core::{errors::If97Error, If97, WaterState};
+use if97_core::{errors::If97Error, saturation, If97, WaterState};
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 use std::fs;
@@ -269,10 +269,49 @@ fn project_state(chart_type: DiagramKind, swap_axes: bool, state: WaterState) ->
     PlotPoint { x, y }
 }
 
+#[derive(Clone, Copy)]
+enum AxisVar {
+    P,
+    T,
+    H,
+    S,
+    V,
+}
+
+fn axis_vars(chart_type: DiagramKind, swap_axes: bool) -> (AxisVar, AxisVar) {
+    let (mut x, mut y) = match chart_type {
+        DiagramKind::Ts => (AxisVar::S, AxisVar::T),
+        DiagramKind::Hs => (AxisVar::S, AxisVar::H),
+        DiagramKind::Ph => (AxisVar::H, AxisVar::P),
+        DiagramKind::Tv => (AxisVar::V, AxisVar::T),
+        DiagramKind::Pv => (AxisVar::V, AxisVar::P),
+        DiagramKind::Pt => (AxisVar::T, AxisVar::P),
+        DiagramKind::Ps => (AxisVar::S, AxisVar::P),
+        DiagramKind::Th => (AxisVar::H, AxisVar::T),
+    };
+
+    if swap_axes {
+        std::mem::swap(&mut x, &mut y);
+    }
+
+    (x, y)
+}
+
+fn metric_value(var: AxisVar, value: f64) -> f64 {
+    // Для v-диаграмм размах по оси v большой, из-за чего адаптивное уточнение
+    // недодаёт точек в области малого v. В метрике используем ln(v).
+    match var {
+        AxisVar::V => value.max(1e-12).ln(),
+        _ => value,
+    }
+}
+
 const SAT_P_MIN: f64 = 0.000611657_f64;
 const SAT_P_MAX: f64 = 22.064_f64;
 const SAT_MAX_DEPTH: usize = 12;
-const SAT_REL_TOL: f64 = 0.0025;
+const SAT_REL_TOL_DEFAULT: f64 = 0.00035;
+const SAT_REL_TOL_V: f64 = 0.00015;
+const SAT_PRE_SAMPLES: usize = 32;
 
 fn saturation_pressure(t: f64) -> f64 {
     (SAT_P_MIN.ln() + t * (SAT_P_MAX.ln() - SAT_P_MIN.ln())).exp()
@@ -285,25 +324,83 @@ fn eval_saturation_point(
     t: f64,
 ) -> Option<PlotPoint> {
     let pressure = saturation_pressure(t);
-    let state = If97::px(pressure.into(), quality.into()).ok()?;
+    let state = if quality <= 0.0 {
+        saturation::saturated_liquid(pressure.into()).ok()?
+    } else {
+        saturation::saturated_vapor(pressure.into()).ok()?
+    };
     Some(project_state(chart_type, swap_axes, state))
 }
 
-fn point_line_distance(a: PlotPoint, b: PlotPoint, m: PlotPoint) -> f64 {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    let denom = (dx * dx + dy * dy).sqrt();
-    if denom <= f64::EPSILON {
-        return 0.0;
+fn estimate_dome_spans(chart_type: DiagramKind, swap_axes: bool) -> (f64, f64, f64, f64) {
+    let mut min_lin_x = f64::INFINITY;
+    let mut max_lin_x = f64::NEG_INFINITY;
+    let mut min_lin_y = f64::INFINITY;
+    let mut max_lin_y = f64::NEG_INFINITY;
+
+    let mut min_met_x = f64::INFINITY;
+    let mut max_met_x = f64::NEG_INFINITY;
+    let mut min_met_y = f64::INFINITY;
+    let mut max_met_y = f64::NEG_INFINITY;
+
+    let (x_var, y_var) = axis_vars(chart_type, swap_axes);
+    let qualities = [0.0, 1.0];
+    for &quality in &qualities {
+        for i in 0..SAT_PRE_SAMPLES {
+            let t = if SAT_PRE_SAMPLES <= 1 {
+                0.0
+            } else {
+                i as f64 / (SAT_PRE_SAMPLES - 1) as f64
+            };
+            if let Some(p) = eval_saturation_point(chart_type, swap_axes, quality, t) {
+                if p.x.is_finite() && p.y.is_finite() {
+                    min_lin_x = min_lin_x.min(p.x);
+                    max_lin_x = max_lin_x.max(p.x);
+                    min_lin_y = min_lin_y.min(p.y);
+                    max_lin_y = max_lin_y.max(p.y);
+
+                    let mx = metric_value(x_var, p.x);
+                    let my = metric_value(y_var, p.y);
+                    min_met_x = min_met_x.min(mx);
+                    max_met_x = max_met_x.max(mx);
+                    min_met_y = min_met_y.min(my);
+                    max_met_y = max_met_y.max(my);
+                }
+            }
+        }
     }
-    let cross = (dx * (m.y - a.y) - dy * (m.x - a.x)).abs();
-    cross / denom
+
+    if !min_lin_x.is_finite() || !min_lin_y.is_finite() {
+        return (1.0, 1.0, 1.0, 1.0);
+    }
+
+    let lin_span_x = (max_lin_x - min_lin_x).abs().max(1e-9);
+    let lin_span_y = (max_lin_y - min_lin_y).abs().max(1e-9);
+
+    let met_span_x = if min_met_x.is_finite() {
+        (max_met_x - min_met_x).abs().max(1e-9)
+    } else {
+        lin_span_x
+    };
+    let met_span_y = if min_met_y.is_finite() {
+        (max_met_y - min_met_y).abs().max(1e-9)
+    } else {
+        lin_span_y
+    };
+
+    (lin_span_x, lin_span_y, met_span_x, met_span_y)
 }
 
 fn refine_saturation_segment(
     chart_type: DiagramKind,
     swap_axes: bool,
     quality: f64,
+    x_var: AxisVar,
+    y_var: AxisVar,
+    lin_span_x: f64,
+    lin_span_y: f64,
+    met_span_x: f64,
+    met_span_y: f64,
     t0: f64,
     p0: PlotPoint,
     t1: f64,
@@ -322,11 +419,78 @@ fn refine_saturation_segment(
         return;
     };
 
-    let seg_len = ((p1.x - p0.x).powi(2) + (p1.y - p0.y).powi(2)).sqrt();
-    let deviation = point_line_distance(p0, p1, pm);
-    if seg_len > 0.0 && deviation > seg_len * SAT_REL_TOL {
-        refine_saturation_segment(chart_type, swap_axes, quality, t0, p0, mid_t, pm, depth + 1, out);
-        refine_saturation_segment(chart_type, swap_axes, quality, mid_t, pm, t1, p1, depth + 1, out);
+    let lin_dx = (p1.x - p0.x) / lin_span_x;
+    let lin_dy = (p1.y - p0.y) / lin_span_y;
+    let lin_seg_len = (lin_dx * lin_dx + lin_dy * lin_dy).sqrt();
+    let lin_mx = (pm.x - p0.x) / lin_span_x;
+    let lin_my = (pm.y - p0.y) / lin_span_y;
+    let lin_dev = if lin_seg_len <= f64::EPSILON {
+        0.0
+    } else {
+        (lin_dx * lin_my - lin_dy * lin_mx).abs() / lin_seg_len
+    };
+
+    let m0x = metric_value(x_var, p0.x);
+    let m0y = metric_value(y_var, p0.y);
+    let m1x = metric_value(x_var, p1.x);
+    let m1y = metric_value(y_var, p1.y);
+    let mmx = metric_value(x_var, pm.x);
+    let mmy = metric_value(y_var, pm.y);
+
+    let met_dx = (m1x - m0x) / met_span_x;
+    let met_dy = (m1y - m0y) / met_span_y;
+    let met_seg_len = (met_dx * met_dx + met_dy * met_dy).sqrt();
+    let met_mx = (mmx - m0x) / met_span_x;
+    let met_my = (mmy - m0y) / met_span_y;
+    let met_dev = if met_seg_len <= f64::EPSILON {
+        0.0
+    } else {
+        (met_dx * met_my - met_dy * met_mx).abs() / met_seg_len
+    };
+
+    let rel_tol = if matches!(x_var, AxisVar::V) || matches!(y_var, AxisVar::V) {
+        SAT_REL_TOL_V
+    } else {
+        SAT_REL_TOL_DEFAULT
+    };
+    let need_refine = (lin_seg_len > 0.0 && lin_dev > lin_seg_len * rel_tol)
+        || (met_seg_len > 0.0 && met_dev > met_seg_len * rel_tol);
+
+    if need_refine {
+        refine_saturation_segment(
+            chart_type,
+            swap_axes,
+            quality,
+            x_var,
+            y_var,
+            lin_span_x,
+            lin_span_y,
+            met_span_x,
+            met_span_y,
+            t0,
+            p0,
+            mid_t,
+            pm,
+            depth + 1,
+            out,
+        );
+        refine_saturation_segment(
+            chart_type,
+            swap_axes,
+            quality,
+            x_var,
+            y_var,
+            lin_span_x,
+            lin_span_y,
+            met_span_x,
+            met_span_y,
+            mid_t,
+            pm,
+            t1,
+            p1,
+            depth + 1,
+            out,
+        );
     } else {
         out.push(p0);
     }
@@ -340,8 +504,27 @@ fn build_saturation_side(chart_type: DiagramKind, swap_axes: bool, quality: f64)
         return Vec::new();
     };
 
+    let (x_var, y_var) = axis_vars(chart_type, swap_axes);
+    let (lin_span_x, lin_span_y, met_span_x, met_span_y) =
+        estimate_dome_spans(chart_type, swap_axes);
     let mut points = Vec::new();
-    refine_saturation_segment(chart_type, swap_axes, quality, 0.0, p0, 1.0, p1, 0, &mut points);
+    refine_saturation_segment(
+        chart_type,
+        swap_axes,
+        quality,
+        x_var,
+        y_var,
+        lin_span_x,
+        lin_span_y,
+        met_span_x,
+        met_span_y,
+        0.0,
+        p0,
+        1.0,
+        p1,
+        0,
+        &mut points,
+    );
     points.push(p1);
     points
 }
@@ -486,4 +669,43 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("ошибка при запуске приложения Tauri");
+}
+
+#[cfg(test)]
+mod dome_perf_tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    #[ignore]
+    fn dome_perf_all_diagrams() {
+        let diagrams = [
+            DiagramKind::Pt,
+            DiagramKind::Pv,
+            DiagramKind::Tv,
+            DiagramKind::Ph,
+            DiagramKind::Ps,
+            DiagramKind::Ts,
+            DiagramKind::Th,
+            DiagramKind::Hs,
+        ];
+
+        for &chart_type in &diagrams {
+            for &swap_axes in &[false, true] {
+                let start = Instant::now();
+                let points = calculate_dome_points(DomeRequest {
+                    chart_type,
+                    swap_axes,
+                });
+                let elapsed = start.elapsed().as_secs_f64();
+                println!(
+                    "dome_perf: chart={:?} swap_axes={} points={} elapsed={:.3}s",
+                    chart_type,
+                    swap_axes,
+                    points.len(),
+                    elapsed
+                );
+            }
+        }
+    }
 }

@@ -4,8 +4,8 @@
   "version": "0.1.4",
   "identifier": "com.if97.calculator",
   "build": {
-    "beforeBuildCommand": "trunk build",
-    "beforeDevCommand": "trunk serve",
+    "beforeBuildCommand": "trunk build --release",
+    "beforeDevCommand": "trunk serve --release",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:8080"
   },

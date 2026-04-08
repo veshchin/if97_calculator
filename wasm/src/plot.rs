@@ -3,6 +3,7 @@ use crate::types::ChartType;
 use if97_app_api::{PlotPoint, StateDto};
 use plotters::prelude::*;
 use plotters_canvas::CanvasBackend;
+use web_sys::HtmlCanvasElement;
 
 const INSIDE: u8 = 0;
 const LEFT: u8 = 1;
@@ -105,12 +106,12 @@ pub struct PlotSeries {
 }
 
 pub fn draw_diagram(
-    canvas_id: &str,
+    canvas: &HtmlCanvasElement,
     opts: &ChartOptions,
     dome_points: &[PlotPoint],
     series_list: &[PlotSeries],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let backend = CanvasBackend::new(canvas_id).ok_or("Холст не найден")?;
+    let backend = CanvasBackend::with_canvas_object(canvas.clone()).ok_or("Холст не найден")?;
     let root = backend.into_drawing_area();
     root.fill(&WHITE)?;
 
@@ -127,10 +128,7 @@ pub fn draw_diagram(
         .margin(60)
         .x_label_area_size(100)
         .y_label_area_size(150)
-        .build_cartesian_2d(
-            opts.x_range.0..opts.x_range.1,
-            opts.y_range.0..opts.y_range.1,
-        )?;
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
 
     chart
         .configure_mesh()
@@ -139,24 +137,59 @@ pub fn draw_diagram(
         .draw()?;
 
     if opts.show_dome {
-        let mut clipped_dome = Vec::new();
-        for i in 0..dome_points.len().saturating_sub(1) {
-            let p0 = (dome_points[i].x, dome_points[i].y);
-            let p1 = (dome_points[i + 1].x, dome_points[i + 1].y);
-            if let Some((cp0, cp1)) =
-                cohen_sutherland(p0.0, p0.1, p1.0, p1.1, x_min, x_max, y_min, y_max)
-            {
-                if clipped_dome.is_empty() {
-                    clipped_dome.push(cp0);
-                }
-                clipped_dome.push(cp1);
-            }
-        }
-        if !clipped_dome.is_empty() {
+        // Быстрый путь: если все точки купола уже находятся в пределах текущих осей,
+        // клиппинг не нужен и можно рисовать одну полилинию.
+        let all_inside = dome_points.iter().all(|p| {
+            p.x.is_finite()
+                && p.y.is_finite()
+                && p.x >= x_min
+                && p.x <= x_max
+                && p.y >= y_min
+                && p.y <= y_max
+        });
+
+        if all_inside {
             chart.draw_series(LineSeries::new(
-                clipped_dome,
+                dome_points.iter().map(|p| (p.x, p.y)),
                 RGBColor(128, 0, 128).stroke_width(3),
             ))?;
+        } else {
+            // Рисуем купол несколькими сегментами. Если просто собрать все отрезки в один LineSeries,
+            // то при клиппинге появятся "диагонали" между разорванными частями кривой.
+            let mut segments: Vec<Vec<(f64, f64)>> = Vec::new();
+            let mut current: Vec<(f64, f64)> = Vec::new();
+            for i in 0..dome_points.len().saturating_sub(1) {
+                let p0 = (dome_points[i].x, dome_points[i].y);
+                let p1 = (dome_points[i + 1].x, dome_points[i + 1].y);
+                if let Some((cp0, cp1)) =
+                    cohen_sutherland(p0.0, p0.1, p1.0, p1.1, x_min, x_max, y_min, y_max)
+                {
+                    let need_start = current
+                        .last()
+                        .map(|last| {
+                            (last.0 - cp0.0).abs() > 1e-12 || (last.1 - cp0.1).abs() > 1e-12
+                        })
+                        .unwrap_or(true);
+                    if need_start {
+                        current.push(cp0);
+                    }
+                    current.push(cp1);
+                } else if current.len() >= 2 {
+                    segments.push(std::mem::take(&mut current));
+                } else {
+                    current.clear();
+                }
+            }
+            if current.len() >= 2 {
+                segments.push(current);
+            }
+
+            for seg in segments.into_iter().filter(|seg| seg.len() >= 2) {
+                chart.draw_series(LineSeries::new(
+                    seg,
+                    RGBColor(128, 0, 128).stroke_width(3),
+                ))?;
+            }
         }
     }
 
