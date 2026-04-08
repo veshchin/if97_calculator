@@ -1,3 +1,5 @@
+//! Вкладка табличного расчета.
+
 use crate::tauri_api;
 use crate::types::{AppContext, SavedItem, SavedTable, StateContext};
 use if97_app_api::{InputMode, StateDto, TableCalcRequest, TableRowResult};
@@ -141,6 +143,7 @@ fn schedule_table_calculation(
 }
 
 #[function_component(TableCalcTab)]
+/// UI для табличного ввода, пересчета и сохранения результатов.
 pub fn table_calc_tab() -> Html {
     let state_ctx = use_context::<StateContext>().expect("Контекст состояния не найден");
     let app_ctx = use_context::<AppContext>().expect("Контекст данных не найден");

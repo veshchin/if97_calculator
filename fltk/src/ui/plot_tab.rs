@@ -1,3 +1,5 @@
+//! UI-вкладка построения диаграмм.
+
 use crate::plot::renderer::render_plot_to_buffer;
 use crate::state::{AppState, Message};
 use fltk::app::Sender;
@@ -54,19 +56,30 @@ fn axis_labels(kind: DiagramKind, swap_axes: bool) -> (&'static str, &'static st
 }
 
 #[allow(dead_code)]
+/// Вкладка UI для отрисовки диаграмм и экспорта в PNG.
 pub struct PlotTab {
+    /// Корневой контейнер вкладки.
     pub group: Group,
+    /// Выбор типа диаграммы.
     pub choice_plot_type: Choice,
+    /// Область отрисовки (изображение устанавливается как `RgbImage`).
     pub plot_frame: Frame,
+    /// Ручной минимум X.
     pub inp_x_min: Input,
+    /// Ручной максимум X.
     pub inp_x_max: Input,
+    /// Ручной минимум Y.
     pub inp_y_min: Input,
+    /// Ручной максимум Y.
     pub inp_y_max: Input,
+    /// Подпись оси X.
     pub axis_x_label: Frame,
+    /// Подпись оси Y.
     pub axis_y_label: Frame,
 }
 
 impl PlotTab {
+    /// Создает вкладку и настраивает callback'и для отправки [`Message`] в обработчик.
     pub fn new(sender: Sender<Message>) -> Self {
         let group = Group::new(10, 35, 1030, 655, " Графики ");
 
@@ -196,6 +209,7 @@ impl PlotTab {
         }
     }
 
+    /// Синхронизирует контролы вкладки с текущим состоянием приложения.
     pub fn sync_controls(&mut self, state: &AppState) {
         self.choice_plot_type
             .set_value(plot_to_choice_index(state.plot_type));
@@ -208,6 +222,7 @@ impl PlotTab {
         self.inp_y_max.set_value(&format!("{:.6}", state.custom_limits.3));
     }
 
+    /// Перерисовывает график в `plot_frame` на основании `state`.
     pub fn redraw_plot(&mut self, state: &AppState) {
         self.sync_controls(state);
 

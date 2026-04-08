@@ -1,3 +1,5 @@
+//! Вкладка построения диаграмм (canvas).
+
 use crate::plot::{draw_diagram, project_state, ChartOptions, PlotSeries};
 use crate::tauri_api;
 use crate::types::{AppContext, ChartType, SavedItem, StateContext};
@@ -11,16 +13,24 @@ use web_sys::{HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElemen
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
+/// Параметры вкладки графиков.
 pub struct PlotsProps {
+    /// Флаг активности вкладки (используется для управления отрисовкой).
     pub active: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
+/// Переменная, которая отображается на оси графика.
 pub enum AxisVar {
+    /// Давление `p` (МПа).
     P,
+    /// Температура `T` (K).
     T,
+    /// Энтальпия `h` (кДж/кг).
     H,
+    /// Энтропия `s` (кДж/(кг*K)).
     S,
+    /// Удельный объем `v` (м^3/кг).
     V,
 }
 
@@ -109,6 +119,7 @@ fn get_axes(chart_type: ChartType, swap_axes: bool) -> (AxisVar, AxisVar) {
 }
 
 #[function_component(PlotsTab)]
+/// Вкладка графиков: выбор диаграммы, управление масштабом и отрисовка данных.
 pub fn plots_tab(props: &PlotsProps) -> Html {
     let app_ctx = use_context::<AppContext>().expect("Контекст данных не найден");
     let state_ctx = use_context::<StateContext>().expect("Контекст состояния не найден");

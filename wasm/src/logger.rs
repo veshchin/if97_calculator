@@ -1,3 +1,8 @@
+//! Журналирование во frontend (WASM).
+//!
+//! Реализовано как `tracing` слой, который сохраняет ограниченное число сообщений
+//! в кольцевом буфере для отображения в UI.
+
 use if97_app_api::LogEntryDto;
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
@@ -7,6 +12,7 @@ use tracing_subscriber::Registry;
 
 const MAX_LOG_ENTRIES: usize = 2000;
 
+/// Кольцевой буфер последних лог-сообщений frontend.
 pub static LOG_BUFFER: Lazy<Mutex<VecDeque<LogEntryDto>>> =
     Lazy::new(|| Mutex::new(VecDeque::with_capacity(MAX_LOG_ENTRIES)));
 
@@ -73,6 +79,7 @@ impl tracing::field::Visit for StringVisitor {
     }
 }
 
+/// Возвращает снапшот текущих логов (для UI).
 pub fn snapshot_logs() -> Vec<LogEntryDto> {
     LOG_BUFFER
         .lock()
@@ -80,12 +87,14 @@ pub fn snapshot_logs() -> Vec<LogEntryDto> {
         .unwrap_or_default()
 }
 
+/// Очищает буфер логов.
 pub fn clear_logs() {
     if let Ok(mut buffer) = LOG_BUFFER.lock() {
         buffer.clear();
     }
 }
 
+/// Инициализирует `tracing` subscriber для frontend.
 pub fn init_logger() {
     let subscriber = Registry::default().with(WasmLayer);
     let _ = tracing::subscriber::set_global_default(subscriber);

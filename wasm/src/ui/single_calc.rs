@@ -1,3 +1,5 @@
+//! Вкладка одиночного расчета.
+
 use crate::tauri_api;
 use crate::types::{AppContext, SavedItem, SavedPoint, StateContext};
 use if97_app_api::{InputMode, SingleCalcRequest, StateDto};
@@ -182,6 +184,7 @@ fn view_result(result: &StateDto, precision: usize) -> Html {
 }
 
 #[function_component(SingleCalcTab)]
+/// UI для расчета одной точки и сохранения результата.
 pub fn single_calc_tab() -> Html {
     let state_ctx = use_context::<StateContext>().expect("Контекст состояния не найден");
     let app_ctx = use_context::<AppContext>().expect("Контекст данных не найден");

@@ -1,9 +1,12 @@
+//! Вкладка "О программе" и системный журнал.
+
 use crate::logger;
 use crate::tauri_api;
 use if97_app_api::LogEntryDto;
 use yew::prelude::*;
 
 #[function_component(AboutLogsTab)]
+/// Вкладка с информацией о приложении и выводом журнала.
 pub fn about_logs_tab() -> Html {
     let logs = use_state(Vec::<LogEntryDto>::new);
 

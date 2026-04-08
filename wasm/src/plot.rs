@@ -1,4 +1,4 @@
-/* File: src/plot.rs */
+//! Рендеринг диаграмм в `HtmlCanvasElement` через `plotters-canvas`.
 use crate::types::ChartType;
 use if97_app_api::{PlotPoint, StateDto};
 use plotters::prelude::*;
@@ -26,6 +26,7 @@ fn compute_out_code(x: f64, y: f64, x_min: f64, x_max: f64, y_min: f64, y_max: f
     code
 }
 
+/// Клиппинг отрезка по прямоугольнику (алгоритм Cohen-Sutherland).
 pub fn cohen_sutherland(
     mut x0: f64,
     mut y0: f64,
@@ -93,18 +94,26 @@ pub fn cohen_sutherland(
     }
 }
 
+/// Параметры построения диаграммы.
 pub struct ChartOptions {
+    /// Показывать купол насыщения.
     pub show_dome: bool,
+    /// Диапазон оси X.
     pub x_range: (f64, f64),
+    /// Диапазон оси Y.
     pub y_range: (f64, f64),
 }
 
 #[derive(Clone, PartialEq)]
+/// Серия точек для отрисовки на диаграмме.
 pub struct PlotSeries {
+    /// Имя серии (для UI).
     pub name: String,
+    /// Набор точек (x, y) в координатах диаграммы.
     pub points: Vec<(f64, f64)>,
 }
 
+/// Отрисовывает диаграмму на canvas.
 pub fn draw_diagram(
     canvas: &HtmlCanvasElement,
     opts: &ChartOptions,
@@ -214,6 +223,7 @@ pub fn draw_diagram(
     Ok(())
 }
 
+/// Проецирует `StateDto` в координаты диаграммы (x, y).
 pub fn project_state(chart_type: ChartType, swap_axes: bool, state: &StateDto) -> (f64, f64) {
     let (mut x, mut y) = match chart_type {
         ChartType::Ts => (state.s, state.t),

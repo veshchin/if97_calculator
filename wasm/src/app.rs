@@ -1,17 +1,23 @@
-/* File: src/app.rs */
+//! Корневой компонент приложения (Yew) и навигация по вкладкам.
 use crate::types::{AppContext, PersistentState, SavedItemsState, StateContext};
 use crate::ui::{AboutLogsTab, PlotsTab, SingleCalcTab, TableCalcTab};
 use yew::prelude::*;
 
 #[derive(Clone, PartialEq)]
+/// Вкладки интерфейса приложения.
 pub enum Tab {
+    /// Одиночный расчет.
     Single,
+    /// Табличный расчет.
     Table,
+    /// Построение графиков.
     Plots,
+    /// О приложении и журнал.
     About,
 }
 
 #[function_component(App)]
+/// Корневой компонент UI.
 pub fn app() -> Html {
     let active_tab = use_state(|| Tab::Single);
     let saved_items = use_state(SavedItemsState::default);

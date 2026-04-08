@@ -1,4 +1,4 @@
-// File: src/ui/about.rs
+//! UI-вкладка "О программе" и экспорт логов.
 
 use crate::state::Message;
 use fltk::app::Sender;
@@ -6,11 +6,14 @@ use fltk::{button::*, enums::*, frame::*, group::*, prelude::*};
 use tracing::{error, info};
 
 #[allow(dead_code)]
+/// Вкладка UI с информацией о приложении и системными действиями.
 pub struct AboutTab {
+    /// Корневой контейнер вкладки.
     pub group: Group,
 }
 
 impl AboutTab {
+    /// Создает вкладку и настраивает callback'и для отправки [`Message`] в обработчик.
     pub fn new(sender: Sender<Message>) -> Self {
         let group = Group::new(10, 35, 1030, 655, " О программе ");
 

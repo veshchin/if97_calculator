@@ -1,3 +1,5 @@
+//! UI-вкладка табличного расчета.
+
 use crate::state::{BatchRow, Message};
 use fltk::app;
 use fltk::app::Sender;
@@ -113,26 +115,43 @@ fn draw_table_cell(text: &str, x: i32, y: i32, w: i32, h: i32, bg: Color, text_c
 }
 
 #[allow(dead_code)]
+/// Вкладка UI для табличного расчета (ввод текстом, пересчет и экспорт результата).
 pub struct BatchTab {
+    /// Корневой контейнер вкладки.
     pub group: Group,
+    /// Выбор режима расчета.
     pub choice_mode: Choice,
+    /// Выбор точности вывода.
     pub choice_precision: Choice,
+    /// Поле ввода табличных данных.
     pub input_area: MultilineInput,
+    /// Поле ввода имени для сохранения таблицы.
     pub save_name: Input,
+    /// Список сохраненных таблиц.
     pub saved_browser: HoldBrowser,
+    /// Генератор: начало диапазона первого параметра.
     pub gen_v1_from: Input,
+    /// Генератор: конец диапазона первого параметра.
     pub gen_v1_to: Input,
+    /// Генератор: шаг первого параметра.
     pub gen_v1_step: Input,
+    /// Генератор: начало диапазона второго параметра.
     pub gen_v2_from: Input,
+    /// Генератор: конец диапазона второго параметра.
     pub gen_v2_to: Input,
+    /// Генератор: шаг второго параметра.
     pub gen_v2_step: Input,
+    /// Подпись для первого параметра генератора.
     pub gen_v1_label: Frame,
+    /// Подпись для второго параметра генератора.
     pub gen_v2_label: Frame,
+    /// Таблица результата расчета.
     pub result_table: Table,
     model: Rc<RefCell<TableDisplayModel>>,
 }
 
 impl BatchTab {
+    /// Создает вкладку и настраивает callback'и для отправки [`Message`] в обработчик.
     pub fn new(sender: Sender<Message>) -> Self {
         let group = Group::new(10, 35, 1030, 655, " Табличный расчет ");
 
@@ -475,6 +494,7 @@ impl BatchTab {
         }
     }
 
+    /// Устанавливает режим расчета и обновляет подписи генератора.
     pub fn set_mode(&mut self, mode: InputMode) {
         self.choice_mode.set_value(mode_to_choice_index(mode));
         let (label_a, label_b) = mode_labels(mode);
@@ -482,18 +502,22 @@ impl BatchTab {
         self.gen_v2_label.set_label(label_b);
     }
 
+    /// Устанавливает точность вывода (0..=10 знаков после запятой).
     pub fn set_precision(&mut self, precision: usize) {
         self.choice_precision.set_value(precision.min(10) as i32);
     }
 
+    /// Устанавливает текст табличного ввода.
     pub fn set_input(&mut self, text: &str) {
         self.input_area.set_value(text);
     }
 
+    /// Устанавливает имя для сохранения таблицы.
     pub fn set_save_name(&mut self, value: &str) {
         self.save_name.set_value(value);
     }
 
+    /// Синхронизирует список сохраненных таблиц.
     pub fn sync_saved_tables(&mut self, labels: &[String]) {
         self.saved_browser.clear();
         for label in labels {
@@ -501,6 +525,7 @@ impl BatchTab {
         }
     }
 
+    /// Обновляет модель отображения и перерисовывает таблицу результата.
     pub fn update_table(&mut self, rows: &[BatchRow], precision: usize) {
         let display_rows = rows
             .iter()

@@ -1,3 +1,5 @@
+//! UI-вкладка одиночного расчета.
+
 use crate::state::Message;
 use fltk::app;
 use fltk::app::Sender;
@@ -44,21 +46,34 @@ fn mode_labels(mode: InputMode) -> (&'static str, &'static str) {
 }
 
 #[allow(dead_code)]
+/// Вкладка UI для одиночного расчета (p-T, rho-T, p-h, p-s, p-x).
 pub struct SingleTab {
+    /// Корневой контейнер вкладки.
     pub group: Group,
+    /// Выбор режима расчета.
     pub choice_mode: Choice,
+    /// Выбор точности вывода.
     pub choice_precision: Choice,
+    /// Поле ввода первого параметра.
     pub input_a: Input,
+    /// Поле ввода второго параметра.
     pub input_b: Input,
+    /// Поле ввода имени для сохранения точки.
     pub save_name: Input,
+    /// Кнопка сохранения/обновления точки.
     pub save_button: Button,
+    /// Кнопка загрузки выбранной сохраненной точки.
     pub load_button: Button,
+    /// Кнопка удаления выбранной сохраненной точки.
     pub delete_button: Button,
+    /// Список сохраненных точек.
     pub saved_browser: HoldBrowser,
+    /// Поле вывода результата расчета.
     pub res_frame: Frame,
 }
 
 impl SingleTab {
+    /// Создает вкладку и настраивает callback'и для отправки [`Message`] в обработчик.
     pub fn new(sender: Sender<Message>) -> Self {
         let group = Group::new(10, 35, 1030, 655, " Одиночный расчет ");
 
@@ -275,6 +290,7 @@ impl SingleTab {
         }
     }
 
+    /// Устанавливает режим расчета и обновляет подписи полей ввода.
     pub fn set_mode(&mut self, mode: InputMode) {
         self.choice_mode.set_value(mode_to_choice_index(mode));
         let (label_a, label_b) = mode_labels(mode);
@@ -282,20 +298,24 @@ impl SingleTab {
         self.input_b.set_label(label_b);
     }
 
+    /// Устанавливает точность вывода (0..=10 знаков после запятой).
     pub fn set_precision(&mut self, precision: usize) {
         self.choice_precision.set_value(precision.min(10) as i32);
     }
 
+    /// Устанавливает текущий запрос (режим и значения в полях ввода).
     pub fn set_request(&mut self, mode: InputMode, raw_a: &str, raw_b: &str) {
         self.set_mode(mode);
         self.input_a.set_value(raw_a);
         self.input_b.set_value(raw_b);
     }
 
+    /// Устанавливает имя для сохранения точки.
     pub fn set_save_name(&mut self, value: &str) {
         self.save_name.set_value(value);
     }
 
+    /// Синхронизирует список сохраненных точек.
     pub fn sync_saved_points(&mut self, labels: &[String]) {
         self.saved_browser.clear();
         for label in labels {
@@ -303,6 +323,7 @@ impl SingleTab {
         }
     }
 
+    /// Обновляет текст результата и цвет (ошибка/норма).
     pub fn update_result(&mut self, text: &str, is_error: bool) {
         self.res_frame.set_label(text);
         self.res_frame
