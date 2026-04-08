@@ -47,8 +47,8 @@ Rust workspace описан в `Cargo.toml` (корень репозитория
 
 - FLTK UI:
   - пользовательский ввод (строки/таблица) → парсинг → вызов `if97_core::If97::*` → отображение результата → (опционально) сохранение/экспорт.
-- WASM/Yew UI (web):
-  - UI-компоненты формируют запросы в DTO (`if97_app_api`) → вычисления выполняются в самом web-коде через `if97_app_api` + `if97_core` (в WASM) или через Tauri-Backend (в desktop-режиме), в зависимости от сценария.
+- Yew frontend (WASM) + Tauri:
+  - UI-компоненты формируют запросы в DTO (`if97_app_api`) → вызов команд Tauri (`invoke`) → вычисления выполняются в Tauri-backend через `if97_core` → UI получает результат как DTO и отображает его.
 - Tauri:
   - web-frontend вызывает `window.__TAURI__.core.invoke(...)` → Tauri-backend выполняет расчет через `if97_core` → возвращает сериализуемый DTO.
 - gRPC service:
@@ -186,18 +186,20 @@ cargo run -p if97_calculator_fltk --release
 - обертки над Tauri invoke API: `wasm/src/tauri_api.rs`;
 - типы/логгер/отрисовка.
 
-Сборка/запуск web (без Tauri):
-
-```bash
-cd wasm
-trunk serve --release
-```
-
-Сборка web (артефакт в `wasm/dist/`):
+Сборка frontend (артефакт в `wasm/dist/`):
 
 ```bash
 cd wasm
 trunk build --release
+```
+
+Примечание: текущая реализация frontend’а использует Tauri `invoke` для вычислений и системных действий, поэтому для полноценной работы расчетов требуется запуск внутри Tauri.
+
+Запуск desktop-версии (dev) делается через Tauri:
+
+```bash
+cd wasm
+cargo tauri dev
 ```
 
 ### 8.2. Tauri backend
@@ -341,4 +343,3 @@ cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps
 ## 11. Примечания для описания в дипломе
 
 См. отдельный файл [`THESIS_OUTLINE.md`](THESIS_OUTLINE.md).
-
