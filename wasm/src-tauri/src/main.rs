@@ -1,5 +1,3 @@
-// File: src-tauri/src/main.rs
-
 // Скрывает консоль на Windows при сборке релизной версии (не отладочной)
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

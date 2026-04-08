@@ -1,11 +1,9 @@
 [package]
-name = "if97_calculator_native" # Оставь свое имя, если тут было другое
-version = "0.1.4"
+name = "if97_calculator_native"
+version = "1.0.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 name = "app_lib"

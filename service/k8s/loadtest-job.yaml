@@ -16,7 +16,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: loadtest
-          image: ghcr.io/veshchin/if97_calculator_service:0.1.4
+          image: ghcr.io/veshchin/if97_calculator_service:1.0.0
           imagePullPolicy: IfNotPresent
           command: ["/usr/local/bin/grpc_loadtest"]
           args:
@@ -37,4 +37,3 @@ spec:
             limits:
               cpu: 1000m
               memory: 512Mi
-

@@ -1,5 +1,3 @@
-// File: src/domain/models/region_1.rs
-
 use crate::constants::*;
 use crate::domain::errors::If97Error;
 use crate::domain::state::{Region, WaterState};

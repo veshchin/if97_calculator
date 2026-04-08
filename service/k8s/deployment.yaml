@@ -27,7 +27,7 @@ spec:
               app.kubernetes.io/name: if97-calculator-service
       containers:
         - name: api
-          image: ghcr.io/veshchin/if97_calculator_service:0.1.4
+          image: ghcr.io/veshchin/if97_calculator_service:1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: grpc

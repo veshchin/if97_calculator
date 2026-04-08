@@ -3,7 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      # Enforce SemVer tag format: vMAJOR.MINOR.PATCH
+      - "v*.*.*"
   workflow_dispatch:
 
 concurrency:
@@ -32,7 +33,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
           sudo apt-get install -y cmake libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
 
       - name: Install Trunk
@@ -87,7 +88,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-          sudo apt-get install -y cmake libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
+          sudo apt-get install -y cmake libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
 
       - name: Install Trunk
         uses: jetli/trunk-action@v0.5.0
@@ -131,3 +132,60 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload ${{ github.ref_name }} artifacts/if97_calculator_fltk-${{ matrix.platform }}${{ matrix.fltk_ext }} --clobber
+
+  docs-and-web:
+    name: Docs + Web Artifacts
+    needs: release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Trunk
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: latest
+
+      - name: Cache cargo build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Build rustdoc (core + api + service)
+        run: cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps
+
+      - name: Build web (WASM/Yew)
+        run: |
+          cd wasm
+          trunk build --release
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          touch target/doc/.nojekyll
+
+          tar -C target -czf artifacts/if97-rustdoc-${{ github.ref_name }}.tar.gz doc
+          tar -C wasm -czf artifacts/if97-web-${{ github.ref_name }}.tar.gz dist
+
+      - name: Upload docs + web artifacts to release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} \
+            artifacts/if97-rustdoc-${{ github.ref_name }}.tar.gz \
+            artifacts/if97-web-${{ github.ref_name }}.tar.gz \
+            --clobber

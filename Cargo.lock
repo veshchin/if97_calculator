@@ -2267,7 +2267,7 @@ dependencies = [
 
 [[package]]
 name = "if97_app_api"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2275,7 +2275,7 @@ dependencies = [
 
 [[package]]
 name = "if97_calculator_fltk"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "csv",
@@ -2290,7 +2290,7 @@ dependencies = [
 
 [[package]]
 name = "if97_calculator_native"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "if97_app_api",
@@ -2309,7 +2309,7 @@ dependencies = [
 
 [[package]]
 name = "if97_calculator_service"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "csv",
  "if97_core",
@@ -2328,7 +2328,7 @@ dependencies = [
 
 [[package]]
 name = "if97_calculator_web"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "console_error_panic_hook",
  "gloo-timers 0.3.0",
@@ -2348,7 +2348,7 @@ dependencies = [
 
 [[package]]
 name = "if97_core"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "csv",
  "serde",

@@ -1,17 +1,13 @@
-# File: Cargo.toml
-
 [package]
 name = "if97_calculator_fltk"
-version = "0.1.4"
+version = "1.0.0"
 edition = "2024"
 
 [dependencies]
 if97_core = { path = "../core" }
 if97_app_api = { path = "../if97_app_api" }
 fltk = { version = "1.4", features = ["fltk-bundled"] }
-# Plotters для рендеринга графиков в буфер FLTK
 plotters = "0.3"
-# Логирование
 tracing = "0.1"
 tracing-subscriber = "0.3"
 webbrowser = "1.0"

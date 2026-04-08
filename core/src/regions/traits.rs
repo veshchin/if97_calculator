@@ -1,5 +1,3 @@
-// File: src/domain/traits.rs
-
 use crate::domain::errors::If97Error;
 use crate::domain::state::WaterState;
 

@@ -1,6 +1,6 @@
 # IF97 Calculator
 
-`if97_calculator` — монорепозиторий с вычислительным ядром IAPWS-IF97 и несколькими способами доставки одного и того же функционала: desktop UI, web/Tauri UI и HTTP-сервис.
+`if97_calculator` — монорепозиторий с вычислительным ядром IAPWS-IF97 и несколькими способами доставки одного и того же функционала: desktop UI, web/Tauri UI и gRPC-сервис.
 
 Репозиторий: <https://github.com/veshchin/if97_calculator>
 
@@ -22,7 +22,7 @@ cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps --op
 - `if97_app_api/` — общие DTO и контракты между UI и backend
 - `wasm/` — интерфейс Yew + Tauri
 - `fltk/` — нативный desktop-клиент на FLTK
-- `service/` — HTTP-обёртка над ядром для Docker/Kubernetes
+- `service/` — gRPC-обёртка над ядром для Docker/Kubernetes
 
 ## Что умеет проект
 
@@ -67,31 +67,29 @@ cd wasm
 cargo tauri dev
 ```
 
-### HTTP-сервис
+### gRPC-сервис
 
 ```bash
-cargo run -p if97_calculator_service
+IF97_GRPC_ADDR=0.0.0.0:50051 cargo run -p if97_calculator_service --bin if97_calculator_service
 ```
 
-Сервис поднимается на `0.0.0.0:8080` и предоставляет:
+API описан в `service/proto/if97.proto`:
 
-- `GET /healthz`
-- `POST /api/v1/calculate/single`
-- `POST /api/v1/calculate/table`
-- `POST /api/v1/plot/dome`
+- `If97Service/CalculatePt` (bidirectional streaming, SoA: `p[]`, `t[]` -> `h[]`, `status[]`)
+- gRPC health (`grpc.health.v1.Health`)
 
 ## Docker и Kubernetes
 
 Сборка контейнера:
 
 ```bash
-docker build -t if97-calculator-service:0.1.4 -f service/Dockerfile .
+docker build -t if97-calculator-service:1.0.0 -f service/Dockerfile .
 ```
 
 Запуск контейнера:
 
 ```bash
-docker run --rm -p 8080:8080 if97-calculator-service:0.1.4
+docker run --rm -p 50051:50051 if97-calculator-service:1.0.0
 ```
 
 Kubernetes-манифесты лежат в `service/k8s/` и включают:
@@ -99,6 +97,7 @@ Kubernetes-манифесты лежат в `service/k8s/` и включают:
 - `Deployment`
 - `Service`
 - `HorizontalPodAutoscaler`
+- `PodDisruptionBudget`
 
 Применение:
 

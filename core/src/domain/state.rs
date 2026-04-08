@@ -1,5 +1,3 @@
-// File: src/domain/state.rs
-
 use crate::domain::units::*;
 use serde::{Deserialize, Serialize};
 
