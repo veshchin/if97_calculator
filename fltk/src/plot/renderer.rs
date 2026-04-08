@@ -402,6 +402,7 @@ fn collect_limits(state: &AppState) -> (f64, f64, f64, f64) {
     (min_x - pad_x, max_x + pad_x, min_y - pad_y, max_y + pad_y)
 }
 
+/// Рендерит текущую диаграмму в RGB-буфер (24-bit).
 pub fn render_plot_to_buffer(state: &AppState, width: u32, height: u32) -> Vec<u8> {
     let mut buffer = vec![0u8; (width * height * 3) as usize];
     {
@@ -412,6 +413,7 @@ pub fn render_plot_to_buffer(state: &AppState, width: u32, height: u32) -> Vec<u
     buffer
 }
 
+/// Рендерит текущую диаграмму в файл.
 pub fn render_plot_to_file(
     state: &AppState,
     filename: &str,

@@ -1,3 +1,7 @@
+//! CLI для нагрузочного тестирования gRPC API `If97Service/CalculatePt`.
+//!
+//! Утилита генерирует поток батчей `p[]/t[]` и измеряет throughput/latency.
+
 use if97_calculator_service::pb::if97::if97_service_client::If97ServiceClient;
 use if97_calculator_service::pb::if97::PtBatchRequest;
 use std::time::Instant;
@@ -206,4 +210,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

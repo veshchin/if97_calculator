@@ -1,21 +1,38 @@
 syntax = "proto3";
 
+// gRPC API микросервиса IF97 (IAPWS-IF97) для расчета теплофизических свойств.
 package if97.v1;
 
+// Сервис для потокового расчета свойств по батчам.
+//
+// Транспорт: bidirectional streaming.
+// Клиент отправляет поток `PtBatchRequest`, сервер отвечает потоком `PtBatchResponse` в том же соединении.
+//
+// Данные передаются в формате Struct-of-Arrays (SoA): `p[]`, `t[]` -> `h[]`, `status[]`.
 service If97Service {
   rpc CalculatePt(stream PtBatchRequest) returns (stream PtBatchResponse);
 }
 
+// Батч входных параметров для расчета в режиме p-T.
 message PtBatchRequest {
+  // Идентификатор батча, задается клиентом и возвращается сервером без изменений.
   uint64 batch_id = 1;
+  // Давление p (МПа), SoA-массив. Длина должна совпадать с `t`.
   repeated double p = 2;
+  // Температура T (K), SoA-массив. Длина должна совпадать с `p`.
   repeated double t = 3;
 }
 
+// Результат расчета батча для режима p-T.
 message PtBatchResponse {
+  // Идентификатор батча из запроса.
   uint64 batch_id = 1;
+  // Энтальпия h (кДж/кг), SoA-массив длиной `len(p)`.
   repeated double h = 2;
+  // Статус поэлементного расчета (0 = OK, иначе код ошибки ядра).
   repeated uint32 status = 3;
+  // Ошибка уровня батча (0 = OK). Используется для ошибок валидации формата.
   uint32 batch_error_code = 4;
+  // Сообщение об ошибке уровня батча (если `batch_error_code != 0`).
   string batch_error_message = 5;
 }

@@ -1,4 +1,4 @@
-// File: src/ui/mod.rs
+//! Компоненты UI для FLTK-приложения.
 
 pub mod about;
 pub mod batch;
@@ -14,15 +14,22 @@ use plot_tab::PlotTab;
 use single::SingleTab;
 
 #[allow(dead_code)]
+/// Главные виджеты приложения (окно и вкладки).
 pub struct MainUI {
+    /// Главное окно приложения.
     pub window: Window,
+    /// Вкладка одиночного расчета.
     pub single_tab: SingleTab,
+    /// Вкладка табличного расчета.
     pub batch_tab: BatchTab,
+    /// Вкладка построения графиков.
     pub plot_tab: PlotTab,
+    /// Вкладка "О программе" и журнал.
     pub about_tab: AboutTab,
 }
 
 impl MainUI {
+    /// Собирает UI и возвращает структуру с основными виджетами.
     pub fn new(sender: Sender<Message>) -> Self {
         let mut window = Window::default()
             .with_size(1050, 700)

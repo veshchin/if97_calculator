@@ -4,6 +4,18 @@
 
 Репозиторий: <https://github.com/veshchin/if97_calculator>
 
+## Документация (Rustdoc)
+
+Опубликованные rustdoc-страницы (ядро + gRPC service + общие DTO):
+
+- <https://veshchin.github.io/if97_calculator/>
+
+Локальная сборка документации:
+
+```bash
+cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps --open
+```
+
 ## Состав проекта
 
 - `core/` — вычислительное ядро `if97_core`

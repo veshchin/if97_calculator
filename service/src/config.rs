@@ -1,21 +1,42 @@
+//! Конфигурация gRPC-сервиса.
+//!
+//! Источник конфигурации: переменные окружения с префиксом `IF97_`.
+//! Значения по умолчанию подобраны для типичного VPS/Kubernetes-окружения.
+
 use std::net::SocketAddr;
 
 #[derive(Clone, Copy, Debug)]
+/// Выбор вычислительного ядра.
 pub enum KernelKind {
+    /// Реальные вычисления через `if97_core`.
     Core,
+    /// Быстрая заглушка (для профилирования транспорта): `h = p + t`.
     Stub,
 }
 
 #[derive(Clone, Debug)]
+/// Параметры запуска сервиса.
 pub struct Config {
+    /// Адрес gRPC-сервера (`IF97_GRPC_ADDR`, default `0.0.0.0:50051`).
     pub grpc_addr: SocketAddr,
+    /// Количество потоков `tokio` runtime (`IF97_IO_THREADS`).
     pub io_threads: usize,
+    /// Количество потоков CPU-пула (`IF97_CPU_THREADS`).
+    ///
+    /// По умолчанию значение вычисляется как число физических ядер, ограниченное cgroup quota/cpuset,
+    /// чтобы корректно работать в Kubernetes без переподписки потоков.
     pub cpu_threads: usize,
+    /// Лимит одновременно обрабатываемых батчей на одно gRPC-соединение (`IF97_MAX_IN_FLIGHT_PER_CONN`).
     pub max_in_flight_per_conn: usize,
+    /// Глобальный лимит одновременно обрабатываемых батчей на процесс (`IF97_MAX_IN_FLIGHT_GLOBAL`).
     pub max_in_flight_global: usize,
+    /// Максимальная длина батча (количество точек) (`IF97_MAX_BATCH_LEN`).
     pub max_batch_len: usize,
+    /// Максимальный размер gRPC сообщения в байтах (`IF97_GRPC_MAX_MSG_BYTES`).
     pub max_msg_bytes: usize,
+    /// Время drain (в секундах) после получения SIGTERM/SIGINT (`IF97_DRAIN_SECS`).
     pub drain_secs: u64,
+    /// Используемое вычислительное ядро (`IF97_KERNEL`: `core|stub`).
     pub kernel: KernelKind,
 }
 
@@ -124,6 +145,7 @@ fn parse_kernel_env() -> Result<KernelKind, Box<dyn std::error::Error>> {
 }
 
 impl Config {
+    /// Загружает конфигурацию из переменных окружения.
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
         let cpu_threads = parse_usize_env("IF97_CPU_THREADS")
             .filter(|&n| n > 0)

@@ -1,10 +1,12 @@
-/* File: src/main.rs */
+//! Web-frontend `if97_calculator` на базе Yew.
+//!
+//! В режиме Tauri этот frontend взаимодействует с backend через команды `tauri`.
 mod app;
 mod logger;
 mod plot;
 mod tauri_api;
 mod types;
-mod ui; // Подключаем наш модуль
+mod ui;
 
 use app::App;
 

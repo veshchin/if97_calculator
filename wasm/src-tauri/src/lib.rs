@@ -1,3 +1,8 @@
+//! Tauri-backend для desktop-сборки `if97_calculator`.
+//!
+//! Крейт предоставляет набор `#[tauri::command]` для UI-frontend (Yew) и запускает
+//! приложение через `tauri::Builder`.
+
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use if97_app_api::{
     DiagramKind, DomeRequest, InputMode, LogEntryDto, PlotPoint, SingleCalcRequest, StateDto,
@@ -650,6 +655,7 @@ async fn save_plot_dialog(app: tauri::AppHandle, b64: String) -> Result<(), Stri
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Запускает Tauri-приложение (desktop/mobile).
 pub fn run() {
     init_logging();
     clear_logs_buffer();

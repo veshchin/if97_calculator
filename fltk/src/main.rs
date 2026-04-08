@@ -1,5 +1,7 @@
 #![windows_subsystem = "windows"]
 
+//! Нативный desktop-клиент `if97_calculator` на FLTK.
+
 mod plot;
 mod state;
 mod ui;
