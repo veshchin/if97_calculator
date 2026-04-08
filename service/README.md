@@ -26,6 +26,12 @@ docker build -t if97-calculator-service:0.1.4 -f service/Dockerfile .
 docker run --rm -p 8080:8080 if97-calculator-service:0.1.4
 ```
 
+Нагрузочный тест ядра внутри контейнера:
+
+```bash
+docker run --rm --entrypoint /usr/local/bin/if97_loadtest if97-calculator-service:0.1.4 --iters 50 --threads 4
+```
+
 ## Kubernetes
 
 Манифесты находятся в `service/k8s/`:

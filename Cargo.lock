@@ -2219,6 +2219,7 @@ name = "if97_app_api"
 version = "0.1.4"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2260,6 +2261,7 @@ name = "if97_calculator_service"
 version = "0.1.4"
 dependencies = [
  "axum",
+ "csv",
  "if97_app_api",
  "if97_core",
  "serde",

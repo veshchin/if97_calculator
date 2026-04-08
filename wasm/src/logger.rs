@@ -80,6 +80,12 @@ pub fn snapshot_logs() -> Vec<LogEntryDto> {
         .unwrap_or_default()
 }
 
+pub fn clear_logs() {
+    if let Ok(mut buffer) = LOG_BUFFER.lock() {
+        buffer.clear();
+    }
+}
+
 pub fn init_logger() {
     let subscriber = Registry::default().with(WasmLayer);
     let _ = tracing::subscriber::set_global_default(subscriber);

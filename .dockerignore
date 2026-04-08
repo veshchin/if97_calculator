@@ -1,0 +1,11 @@
+target/
+dist/
+wasm/dist/
+wasm/.trunk/
+wasm/node_modules/
+.idea/
+.zed/
+.vscode/
+.git/
+.DS_Store
+**/*.log

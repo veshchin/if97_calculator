@@ -169,7 +169,7 @@ pub struct DomeRequest {
     pub swap_axes: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PlotPoint {
     pub x: f64,
     pub y: f64,

@@ -103,6 +103,12 @@ fn snapshot_logs() -> Vec<LogEntryDto> {
         .unwrap_or_default()
 }
 
+fn clear_logs_buffer() {
+    if let Ok(mut buffer) = LOG_BUFFER.lock() {
+        buffer.clear();
+    }
+}
+
 fn map_error(err: If97Error) -> String {
     match err {
         If97Error::PhaseBoundaryError(msg) => format!("Линия насыщения: {msg}"),
@@ -263,32 +269,111 @@ fn project_state(chart_type: DiagramKind, swap_axes: bool, state: WaterState) ->
     PlotPoint { x, y }
 }
 
-fn calculate_dome_points(request: DomeRequest) -> Vec<PlotPoint> {
-    let mut liquid = Vec::new();
-    let mut vapor = Vec::new();
-    let p_min = 0.000611657_f64;
-    let p_max = 22.064_f64;
-    let steps = 200;
+const SAT_P_MIN: f64 = 0.000611657_f64;
+const SAT_P_MAX: f64 = 22.064_f64;
+const SAT_MAX_DEPTH: usize = 12;
+const SAT_REL_TOL: f64 = 0.0025;
 
-    for index in 0..=steps {
-        let t = index as f64 / steps as f64;
-        let pressure = (p_min.ln() + t * (p_max.ln() - p_min.ln())).exp();
-        if let Ok(state) = If97::px(pressure.into(), 0.0.into()) {
-            liquid.push(project_state(request.chart_type, request.swap_axes, state));
-        }
-        if let Ok(state) = If97::px(pressure.into(), 1.0.into()) {
-            vapor.push(project_state(request.chart_type, request.swap_axes, state));
-        }
+fn saturation_pressure(t: f64) -> f64 {
+    (SAT_P_MIN.ln() + t * (SAT_P_MAX.ln() - SAT_P_MIN.ln())).exp()
+}
+
+fn eval_saturation_point(
+    chart_type: DiagramKind,
+    swap_axes: bool,
+    quality: f64,
+    t: f64,
+) -> Option<PlotPoint> {
+    let pressure = saturation_pressure(t);
+    let state = If97::px(pressure.into(), quality.into()).ok()?;
+    Some(project_state(chart_type, swap_axes, state))
+}
+
+fn point_line_distance(a: PlotPoint, b: PlotPoint, m: PlotPoint) -> f64 {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let denom = (dx * dx + dy * dy).sqrt();
+    if denom <= f64::EPSILON {
+        return 0.0;
+    }
+    let cross = (dx * (m.y - a.y) - dy * (m.x - a.x)).abs();
+    cross / denom
+}
+
+fn refine_saturation_segment(
+    chart_type: DiagramKind,
+    swap_axes: bool,
+    quality: f64,
+    t0: f64,
+    p0: PlotPoint,
+    t1: f64,
+    p1: PlotPoint,
+    depth: usize,
+    out: &mut Vec<PlotPoint>,
+) {
+    if depth >= SAT_MAX_DEPTH {
+        out.push(p0);
+        return;
     }
 
+    let mid_t = 0.5 * (t0 + t1);
+    let Some(pm) = eval_saturation_point(chart_type, swap_axes, quality, mid_t) else {
+        out.push(p0);
+        return;
+    };
+
+    let seg_len = ((p1.x - p0.x).powi(2) + (p1.y - p0.y).powi(2)).sqrt();
+    let deviation = point_line_distance(p0, p1, pm);
+    if seg_len > 0.0 && deviation > seg_len * SAT_REL_TOL {
+        refine_saturation_segment(chart_type, swap_axes, quality, t0, p0, mid_t, pm, depth + 1, out);
+        refine_saturation_segment(chart_type, swap_axes, quality, mid_t, pm, t1, p1, depth + 1, out);
+    } else {
+        out.push(p0);
+    }
+}
+
+fn build_saturation_side(chart_type: DiagramKind, swap_axes: bool, quality: f64) -> Vec<PlotPoint> {
+    let Some(p0) = eval_saturation_point(chart_type, swap_axes, quality, 0.0) else {
+        return Vec::new();
+    };
+    let Some(p1) = eval_saturation_point(chart_type, swap_axes, quality, 1.0) else {
+        return Vec::new();
+    };
+
+    let mut points = Vec::new();
+    refine_saturation_segment(chart_type, swap_axes, quality, 0.0, p0, 1.0, p1, 0, &mut points);
+    points.push(p1);
+    points
+}
+
+fn calculate_dome_points(request: DomeRequest) -> Vec<PlotPoint> {
+    let liquid = build_saturation_side(request.chart_type, request.swap_axes, 0.0);
+    if liquid.is_empty() {
+        return Vec::new();
+    }
+
+    // В p-T диаграмме линия насыщения совпадает для x=0 и x=1, поэтому не дублируем путь.
+    if request.chart_type == DiagramKind::Pt {
+        return liquid;
+    }
+
+    let mut vapor = build_saturation_side(request.chart_type, request.swap_axes, 1.0);
     vapor.reverse();
-    liquid.extend(vapor);
-    liquid
+
+    let mut dome = liquid;
+    dome.extend(vapor);
+    dome
 }
 
 #[tauri::command]
 async fn read_logs() -> Result<Vec<LogEntryDto>, String> {
     Ok(snapshot_logs())
+}
+
+#[tauri::command]
+async fn clear_logs() -> Result<(), String> {
+    clear_logs_buffer();
+    Ok(())
 }
 
 #[tauri::command]
@@ -384,12 +469,14 @@ async fn save_plot_dialog(app: tauri::AppHandle, b64: String) -> Result<(), Stri
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_logging();
+    clear_logs_buffer();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             read_logs,
+            clear_logs,
             calculate_single,
             calculate_table,
             calculate_dome,

@@ -88,3 +88,10 @@ pub async fn read_logs() -> Result<Vec<LogEntryDto>, String> {
 
     invoke_command("read_logs", &EmptyArgs {}).await
 }
+
+pub async fn clear_logs() -> Result<(), String> {
+    #[derive(Serialize)]
+    struct EmptyArgs {}
+
+    invoke_command("clear_logs", &EmptyArgs {}).await
+}

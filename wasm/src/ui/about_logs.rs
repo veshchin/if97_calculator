@@ -22,7 +22,16 @@ pub fn about_logs_tab() -> Html {
                 }
             };
 
-            sync_logs();
+            {
+                let logs = logs.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let _ = tauri_api::clear_logs().await;
+                    logger::clear_logs();
+                    let mut merged = tauri_api::read_logs().await.unwrap_or_default();
+                    merged.extend(logger::snapshot_logs());
+                    logs.set(merged);
+                });
+            }
             let interval = gloo_timers::callback::Interval::new(1000, move || {
                 sync_logs();
             });
