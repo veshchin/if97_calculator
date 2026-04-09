@@ -162,9 +162,11 @@ fn main() {
     let secs = elapsed.as_secs_f64().max(1e-9);
     let calls_per_sec = ((ok_calls + err_calls) as f64) / secs;
     let rows_per_sec = (total_rows as f64) / secs;
+    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
 
     println!(
-        "if97_loadtest: rows={} iters={} threads={} total_rows={} elapsed={:.3}s rows/s={:.0} calls/s={:.0} ok={} err={} checksum={}",
+        "if97_loadtest: profile={} rows={} iters={} threads={} total_rows={} elapsed={:.3}s rows/s={:.0} calls/s={:.0} ok={} err={} checksum={}",
+        profile,
         rows.len(),
         iters,
         threads,

@@ -16,6 +16,12 @@
 cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps --open
 ```
 
+## Демо и воспроизводимость
+
+- протокол замеров: `docs/MEASUREMENTS.md`
+- трассировка «задача -> модуль -> тест -> артефакт»: `docs/TRACEABILITY.md`
+- preflight-проверка окружения: `bash scripts/preflight.sh`
+
 ## Состав проекта
 
 - `core/` — вычислительное ядро `if97_core`
@@ -52,6 +58,20 @@ cargo check --workspace
 
 ```bash
 cargo test -p if97_core
+```
+
+### Тесты DTO/сервиса/UI-backend
+
+```bash
+cargo test -p if97_app_api
+cargo test -p if97_calculator_service
+cargo test -p if97_calculator_native
+```
+
+Отчет с полными логами команд (тесты + бенчи) генерируется так:
+
+```bash
+bash scripts/regenerate_tests_md.sh
 ```
 
 ### FLTK-приложение

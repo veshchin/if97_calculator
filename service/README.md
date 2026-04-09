@@ -15,6 +15,24 @@
 IF97_GRPC_ADDR=0.0.0.0:50051 cargo run -p if97_calculator_service --bin if97_calculator_service
 ```
 
+## Health-check
+
+Прямая проверка gRPC Health API без `grpcurl/grpc_health_probe`:
+
+```bash
+cargo run -p if97_calculator_service --bin grpc_healthcheck -- --addr 127.0.0.1:50051
+```
+
+По умолчанию проверяются два имени сервиса:
+- `"if97.v1.If97Service"` (конкретный gRPC-сервис)
+- `""` (общий статус сервера)
+
+## Тесты
+
+```bash
+cargo test -p if97_calculator_service
+```
+
 Основные переменные окружения:
 
 - `IF97_GRPC_ADDR` (default `0.0.0.0:50051`)

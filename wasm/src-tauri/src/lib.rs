@@ -715,3 +715,47 @@ mod dome_perf_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod smoke_tests {
+    use super::*;
+
+    #[test]
+    fn calculate_state_smoke_pt_ok() {
+        let state = calculate_state(SingleCalcRequest {
+            mode: InputMode::Pt,
+            v1: 0.1,
+            v2: 300.0,
+        })
+        .expect("calculate_state pt");
+
+        assert!(state.h.is_finite());
+        assert!(state.s.is_finite());
+        assert!(!state.region.trim().is_empty());
+    }
+
+    #[test]
+    fn calculate_table_rows_smoke_parses_mixed_separators() {
+        let input = "0.1 300\n0.1;300\n0,1\t300\n\n".to_string();
+        let rows = calculate_table_rows(TableCalcRequest {
+            mode: InputMode::Pt,
+            input,
+        });
+
+        assert_eq!(rows.len(), 3);
+        for row in rows {
+            assert!(row.error.is_none());
+            let state = row.state.expect("state");
+            assert!(state.h.is_finite());
+        }
+    }
+
+    #[test]
+    fn calculate_dome_points_smoke_non_empty() {
+        let points = calculate_dome_points(DomeRequest {
+            chart_type: DiagramKind::Pt,
+            swap_axes: false,
+        });
+        assert!(!points.is_empty());
+    }
+}

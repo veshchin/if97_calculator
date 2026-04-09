@@ -192,9 +192,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let elapsed = start.elapsed();
         let secs = elapsed.as_secs_f64().max(1e-9);
         let total_points = (total_batches as f64) * (opts.batch_size as f64);
+        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
 
         println!(
-            "grpc_loadtest: addr={} streams={} batches={} batch_size={} total_batches={} elapsed={:.3}s batches/s={:.0} points/s={:.0}",
+            "grpc_loadtest: profile={} addr={} streams={} batches={} batch_size={} total_batches={} elapsed={:.3}s batches/s={:.0} points/s={:.0}",
+            profile,
             opts.addr,
             opts.streams,
             opts.batches,
