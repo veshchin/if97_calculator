@@ -61,16 +61,42 @@ fi
   uname -a
   echo '```'
   echo
-  echo "macOS (sw_vers):"
+
+  if command -v sw_vers >/dev/null 2>&1; then
+    echo "macOS (sw_vers):"
+    echo '```text'
+    sw_vers
+    echo '```'
+    echo
+  elif command -v lsb_release >/dev/null 2>&1; then
+    echo "Linux (lsb_release):"
+    echo '```text'
+    lsb_release -a 2>/dev/null || true
+    echo '```'
+    echo
+  elif [[ -f /etc/os-release ]]; then
+    echo "Linux (/etc/os-release):"
+    echo '```text'
+    cat /etc/os-release
+    echo '```'
+    echo
+  fi
+
+  echo "Hardware:"
   echo '```text'
-  sw_vers
-  echo '```'
-  echo
-  echo "Hardware (system_profiler, без серийников/UUID):"
-  echo '```text'
-  system_profiler SPHardwareDataType 2>/dev/null \
-    | rg -v "Serial Number|Hardware UUID|Provisioning UDID" \
-    || true
+  if command -v system_profiler >/dev/null 2>&1; then
+    system_profiler SPHardwareDataType 2>/dev/null \
+      | rg -v "Serial Number|Hardware UUID|Provisioning UDID" \
+      || true
+  elif command -v lscpu >/dev/null 2>&1; then
+    lscpu 2>/dev/null || true
+    if command -v free >/dev/null 2>&1; then
+      echo
+      free -h 2>/dev/null || true
+    fi
+  else
+    echo "MISSING: system_profiler/lscpu"
+  fi
   echo '```'
   echo
   echo "Rust toolchain:"
