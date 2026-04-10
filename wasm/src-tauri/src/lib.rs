@@ -5,10 +5,10 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use if97_app_api::{
-    DiagramKind, DomeRequest, InputMode, LogEntryDto, PlotPoint, SingleCalcRequest, StateDto,
+    AxisVar, DomeRequest, InputMode, LogEntryDto, PlotPoint, SingleCalcRequest, StateDto,
     TableCalcRequest, TableRowResult,
 };
-use if97_core::{errors::If97Error, saturation, If97, WaterState};
+use if97_core::{errors::If97Error, saturation, If97, Region, WaterState};
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 use std::fs;
@@ -122,7 +122,67 @@ fn map_error(err: If97Error) -> String {
     }
 }
 
-fn to_state_dto(state: WaterState) -> StateDto {
+fn quality_x_from_state(state: &WaterState) -> f64 {
+    if state.region != Region::Region4 {
+        return f64::NAN;
+    }
+
+    let p = state.p;
+    let v = state.v.inner();
+    let Ok(liq) = saturation::saturated_liquid(p) else {
+        return f64::NAN;
+    };
+    let Ok(vap) = saturation::saturated_vapor(p) else {
+        return f64::NAN;
+    };
+
+    let v_liq = liq.v.inner();
+    let v_vap = vap.v.inner();
+    let denom = v_vap - v_liq;
+    if !denom.is_finite() || denom.abs() < 1e-15 {
+        return f64::NAN;
+    }
+
+    ((v - v_liq) / denom).clamp(0.0, 1.0)
+}
+
+fn cap_non_finite(value: f64) -> f64 {
+    if value.is_finite() {
+        return value;
+    }
+    const CAP: f64 = 1e12;
+    if value.is_sign_negative() { -CAP } else { CAP }
+}
+
+fn cp_value_for_dto(state: &WaterState, x_hint: f64) -> f64 {
+    let raw = state.cp.inner();
+    if raw.is_finite() {
+        return raw;
+    }
+
+    if state.region != Region::Region4 {
+        return cap_non_finite(raw);
+    }
+
+    let x = if x_hint.is_finite() { x_hint } else { quality_x_from_state(state) };
+    if !x.is_finite() {
+        return cap_non_finite(raw);
+    }
+
+    let p = state.p;
+    let Ok(liq) = saturation::saturated_liquid(p) else {
+        return cap_non_finite(raw);
+    };
+    let Ok(vap) = saturation::saturated_vapor(p) else {
+        return cap_non_finite(raw);
+    };
+
+    let cp = liq.cp.inner() + x * (vap.cp.inner() - liq.cp.inner());
+    cap_non_finite(cp)
+}
+
+fn to_state_dto(state: WaterState, x: f64) -> StateDto {
+    let cp = cp_value_for_dto(&state, x);
     StateDto {
         p: state.p.inner(),
         t: state.t.inner(),
@@ -131,8 +191,9 @@ fn to_state_dto(state: WaterState) -> StateDto {
         h: state.h.inner(),
         s: state.s.inner(),
         u: state.u.inner(),
-        cp: state.cp.inner(),
+        cp,
         w: state.w.inner(),
+        x,
         region: format!("{:?}", state.region),
     }
 }
@@ -146,7 +207,15 @@ fn calculate_state(request: SingleCalcRequest) -> Result<StateDto, String> {
         InputMode::Rhot => If97::rhot(request.v1.into(), request.v2.into()),
     };
 
-    result.map(to_state_dto).map_err(map_error)
+    result
+        .map(|state| {
+            let x = match request.mode {
+                InputMode::Px => request.v2,
+                _ => quality_x_from_state(&state),
+            };
+            to_state_dto(state, x)
+        })
+        .map_err(map_error)
 }
 
 fn parse_value(raw: &str) -> Result<f64, String> {
@@ -255,51 +324,20 @@ fn calculate_table_rows(request: TableCalcRequest) -> Vec<TableRowResult> {
     rows
 }
 
-fn project_state(chart_type: DiagramKind, swap_axes: bool, state: WaterState) -> PlotPoint {
-    let (mut x, mut y) = match chart_type {
-        DiagramKind::Ts => (state.s.inner(), state.t.inner()),
-        DiagramKind::Hs => (state.s.inner(), state.h.inner()),
-        DiagramKind::Ph => (state.h.inner(), state.p.inner()),
-        DiagramKind::Tv => (state.v.inner(), state.t.inner()),
-        DiagramKind::Pv => (state.v.inner(), state.p.inner()),
-        DiagramKind::Pt => (state.t.inner(), state.p.inner()),
-        DiagramKind::Ps => (state.s.inner(), state.p.inner()),
-        DiagramKind::Th => (state.h.inner(), state.t.inner()),
-    };
-
-    if swap_axes {
-        std::mem::swap(&mut x, &mut y);
+fn axis_value(var: AxisVar, state: &WaterState, quality: f64) -> f64 {
+    match var {
+        AxisVar::P => state.p.inner(),
+        AxisVar::T => state.t.inner(),
+        AxisVar::V => state.v.inner(),
+        AxisVar::Rho => state.rho.inner(),
+        AxisVar::H => state.h.inner(),
+        AxisVar::S => state.s.inner(),
+        AxisVar::U => state.u.inner(),
+        AxisVar::Cp => state.cp.inner(),
+        AxisVar::W => state.w.inner(),
+        // Для купола насыщения "x" известен по построению: 0 (жидкость) или 1 (пар).
+        AxisVar::X => quality,
     }
-
-    PlotPoint { x, y }
-}
-
-#[derive(Clone, Copy)]
-enum AxisVar {
-    P,
-    T,
-    H,
-    S,
-    V,
-}
-
-fn axis_vars(chart_type: DiagramKind, swap_axes: bool) -> (AxisVar, AxisVar) {
-    let (mut x, mut y) = match chart_type {
-        DiagramKind::Ts => (AxisVar::S, AxisVar::T),
-        DiagramKind::Hs => (AxisVar::S, AxisVar::H),
-        DiagramKind::Ph => (AxisVar::H, AxisVar::P),
-        DiagramKind::Tv => (AxisVar::V, AxisVar::T),
-        DiagramKind::Pv => (AxisVar::V, AxisVar::P),
-        DiagramKind::Pt => (AxisVar::T, AxisVar::P),
-        DiagramKind::Ps => (AxisVar::S, AxisVar::P),
-        DiagramKind::Th => (AxisVar::H, AxisVar::T),
-    };
-
-    if swap_axes {
-        std::mem::swap(&mut x, &mut y);
-    }
-
-    (x, y)
 }
 
 fn metric_value(var: AxisVar, value: f64) -> f64 {
@@ -323,8 +361,8 @@ fn saturation_pressure(t: f64) -> f64 {
 }
 
 fn eval_saturation_point(
-    chart_type: DiagramKind,
-    swap_axes: bool,
+    x_var: AxisVar,
+    y_var: AxisVar,
     quality: f64,
     t: f64,
 ) -> Option<PlotPoint> {
@@ -334,10 +372,13 @@ fn eval_saturation_point(
     } else {
         saturation::saturated_vapor(pressure.into()).ok()?
     };
-    Some(project_state(chart_type, swap_axes, state))
+    Some(PlotPoint {
+        x: axis_value(x_var, &state, quality),
+        y: axis_value(y_var, &state, quality),
+    })
 }
 
-fn estimate_dome_spans(chart_type: DiagramKind, swap_axes: bool) -> (f64, f64, f64, f64) {
+fn estimate_dome_spans(x_var: AxisVar, y_var: AxisVar) -> (f64, f64, f64, f64) {
     let mut min_lin_x = f64::INFINITY;
     let mut max_lin_x = f64::NEG_INFINITY;
     let mut min_lin_y = f64::INFINITY;
@@ -348,7 +389,6 @@ fn estimate_dome_spans(chart_type: DiagramKind, swap_axes: bool) -> (f64, f64, f
     let mut min_met_y = f64::INFINITY;
     let mut max_met_y = f64::NEG_INFINITY;
 
-    let (x_var, y_var) = axis_vars(chart_type, swap_axes);
     let qualities = [0.0, 1.0];
     for &quality in &qualities {
         for i in 0..SAT_PRE_SAMPLES {
@@ -357,7 +397,7 @@ fn estimate_dome_spans(chart_type: DiagramKind, swap_axes: bool) -> (f64, f64, f
             } else {
                 i as f64 / (SAT_PRE_SAMPLES - 1) as f64
             };
-            if let Some(p) = eval_saturation_point(chart_type, swap_axes, quality, t) {
+            if let Some(p) = eval_saturation_point(x_var, y_var, quality, t) {
                 if p.x.is_finite() && p.y.is_finite() {
                     min_lin_x = min_lin_x.min(p.x);
                     max_lin_x = max_lin_x.max(p.x);
@@ -397,11 +437,9 @@ fn estimate_dome_spans(chart_type: DiagramKind, swap_axes: bool) -> (f64, f64, f
 }
 
 fn refine_saturation_segment(
-    chart_type: DiagramKind,
-    swap_axes: bool,
-    quality: f64,
     x_var: AxisVar,
     y_var: AxisVar,
+    quality: f64,
     lin_span_x: f64,
     lin_span_y: f64,
     met_span_x: f64,
@@ -419,7 +457,7 @@ fn refine_saturation_segment(
     }
 
     let mid_t = 0.5 * (t0 + t1);
-    let Some(pm) = eval_saturation_point(chart_type, swap_axes, quality, mid_t) else {
+    let Some(pm) = eval_saturation_point(x_var, y_var, quality, mid_t) else {
         out.push(p0);
         return;
     };
@@ -463,11 +501,9 @@ fn refine_saturation_segment(
 
     if need_refine {
         refine_saturation_segment(
-            chart_type,
-            swap_axes,
-            quality,
             x_var,
             y_var,
+            quality,
             lin_span_x,
             lin_span_y,
             met_span_x,
@@ -480,11 +516,9 @@ fn refine_saturation_segment(
             out,
         );
         refine_saturation_segment(
-            chart_type,
-            swap_axes,
-            quality,
             x_var,
             y_var,
+            quality,
             lin_span_x,
             lin_span_y,
             met_span_x,
@@ -501,24 +535,20 @@ fn refine_saturation_segment(
     }
 }
 
-fn build_saturation_side(chart_type: DiagramKind, swap_axes: bool, quality: f64) -> Vec<PlotPoint> {
-    let Some(p0) = eval_saturation_point(chart_type, swap_axes, quality, 0.0) else {
+fn build_saturation_side(x_var: AxisVar, y_var: AxisVar, quality: f64) -> Vec<PlotPoint> {
+    let Some(p0) = eval_saturation_point(x_var, y_var, quality, 0.0) else {
         return Vec::new();
     };
-    let Some(p1) = eval_saturation_point(chart_type, swap_axes, quality, 1.0) else {
+    let Some(p1) = eval_saturation_point(x_var, y_var, quality, 1.0) else {
         return Vec::new();
     };
 
-    let (x_var, y_var) = axis_vars(chart_type, swap_axes);
-    let (lin_span_x, lin_span_y, met_span_x, met_span_y) =
-        estimate_dome_spans(chart_type, swap_axes);
+    let (lin_span_x, lin_span_y, met_span_x, met_span_y) = estimate_dome_spans(x_var, y_var);
     let mut points = Vec::new();
     refine_saturation_segment(
-        chart_type,
-        swap_axes,
-        quality,
         x_var,
         y_var,
+        quality,
         lin_span_x,
         lin_span_y,
         met_span_x,
@@ -535,17 +565,19 @@ fn build_saturation_side(chart_type: DiagramKind, swap_axes: bool, quality: f64)
 }
 
 fn calculate_dome_points(request: DomeRequest) -> Vec<PlotPoint> {
-    let liquid = build_saturation_side(request.chart_type, request.swap_axes, 0.0);
+    let liquid = build_saturation_side(request.x_var, request.y_var, 0.0);
     if liquid.is_empty() {
         return Vec::new();
     }
 
     // В p-T диаграмме линия насыщения совпадает для x=0 и x=1, поэтому не дублируем путь.
-    if request.chart_type == DiagramKind::Pt {
+    if (request.x_var == AxisVar::T && request.y_var == AxisVar::P)
+        || (request.x_var == AxisVar::P && request.y_var == AxisVar::T)
+    {
         return liquid;
     }
 
-    let mut vapor = build_saturation_side(request.chart_type, request.swap_axes, 1.0);
+    let mut vapor = build_saturation_side(request.x_var, request.y_var, 1.0);
     vapor.reverse();
 
     let mut dome = liquid;
@@ -685,33 +717,28 @@ mod dome_perf_tests {
     #[test]
     #[ignore]
     fn dome_perf_all_diagrams() {
-        let diagrams = [
-            DiagramKind::Pt,
-            DiagramKind::Pv,
-            DiagramKind::Tv,
-            DiagramKind::Ph,
-            DiagramKind::Ps,
-            DiagramKind::Ts,
-            DiagramKind::Th,
-            DiagramKind::Hs,
+        let pairs = [
+            (AxisVar::T, AxisVar::P),
+            (AxisVar::V, AxisVar::P),
+            (AxisVar::S, AxisVar::P),
+            (AxisVar::H, AxisVar::P),
+            (AxisVar::V, AxisVar::T),
+            (AxisVar::S, AxisVar::T),
+            (AxisVar::H, AxisVar::T),
+            (AxisVar::S, AxisVar::H),
         ];
 
-        for &chart_type in &diagrams {
-            for &swap_axes in &[false, true] {
-                let start = Instant::now();
-                let points = calculate_dome_points(DomeRequest {
-                    chart_type,
-                    swap_axes,
-                });
-                let elapsed = start.elapsed().as_secs_f64();
-                println!(
-                    "dome_perf: chart={:?} swap_axes={} points={} elapsed={:.3}s",
-                    chart_type,
-                    swap_axes,
-                    points.len(),
-                    elapsed
-                );
-            }
+        for &(x_var, y_var) in &pairs {
+            let start = Instant::now();
+            let points = calculate_dome_points(DomeRequest { x_var, y_var });
+            let elapsed = start.elapsed().as_secs_f64();
+            println!(
+                "dome_perf: x={:?} y={:?} points={} elapsed={:.3}s",
+                x_var,
+                y_var,
+                points.len(),
+                elapsed
+            );
         }
     }
 }
@@ -753,8 +780,8 @@ mod smoke_tests {
     #[test]
     fn calculate_dome_points_smoke_non_empty() {
         let points = calculate_dome_points(DomeRequest {
-            chart_type: DiagramKind::Pt,
-            swap_axes: false,
+            x_var: AxisVar::T,
+            y_var: AxisVar::P,
         });
         assert!(!points.is_empty());
     }

@@ -1,6 +1,6 @@
 use crate::state::AppState;
-use if97_app_api::DiagramKind;
-use if97_core::{saturation, WaterState};
+use if97_app_api::AxisVar;
+use if97_core::{saturation, Region, WaterState};
 use plotters::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -18,93 +18,166 @@ fn get_palette_color(idx: usize) -> RGBColor {
     palette[idx % palette.len()]
 }
 
-fn project_state(kind: DiagramKind, swap_axes: bool, state: &WaterState) -> (f64, f64) {
-    let (mut x, mut y) = match kind {
-        DiagramKind::Ts => (state.s.inner(), state.t.inner()),
-        DiagramKind::Hs => (state.s.inner(), state.h.inner()),
-        DiagramKind::Ph => (state.h.inner(), state.p.inner()),
-        DiagramKind::Tv => (state.v.inner(), state.t.inner()),
-        DiagramKind::Pv => (state.v.inner(), state.p.inner()),
-        DiagramKind::Pt => (state.t.inner(), state.p.inner()),
-        DiagramKind::Ps => (state.s.inner(), state.p.inner()),
-        DiagramKind::Th => (state.h.inner(), state.t.inner()),
-    };
-
-    if swap_axes {
-        std::mem::swap(&mut x, &mut y);
+fn default_range(var: AxisVar) -> (f64, f64) {
+    match var {
+        AxisVar::P => (0.001, 100.0),
+        AxisVar::T => (273.15, 1000.0),
+        AxisVar::V => (0.001, 2.0),
+        AxisVar::Rho => (1.0, 1200.0),
+        AxisVar::H => (0.0, 4000.0),
+        AxisVar::S => (0.0, 10.0),
+        AxisVar::U => (0.0, 3500.0),
+        AxisVar::Cp => (0.0, 50.0),
+        AxisVar::W => (0.0, 2000.0),
+        AxisVar::X => (0.0, 1.0),
     }
-
-    (x, y)
 }
 
-#[derive(Clone, Copy)]
-enum AxisVar {
-    P,
-    T,
-    H,
-    S,
-    V,
+fn axis_desc_ru(var: AxisVar) -> &'static str {
+    match var {
+        AxisVar::P => "Давление p, МПа",
+        AxisVar::T => "Температура T, К",
+        AxisVar::V => "Удельный объем v, м3/кг",
+        AxisVar::Rho => "Плотность rho, кг/м3",
+        AxisVar::H => "Энтальпия h, кДж/кг",
+        AxisVar::S => "Энтропия s, кДж/(кг·К)",
+        AxisVar::U => "Внутренняя энергия u, кДж/кг",
+        AxisVar::Cp => "Изобарная теплоемкость cp, кДж/(кг·К)",
+        AxisVar::W => "Скорость звука w, м/с",
+        AxisVar::X => "Степень сухости x",
+    }
 }
 
-fn axis_vars(kind: DiagramKind, swap_axes: bool) -> (AxisVar, AxisVar) {
-    let (mut x, mut y) = match kind {
-        DiagramKind::Ts => (AxisVar::S, AxisVar::T),
-        DiagramKind::Hs => (AxisVar::S, AxisVar::H),
-        DiagramKind::Ph => (AxisVar::H, AxisVar::P),
-        DiagramKind::Tv => (AxisVar::V, AxisVar::T),
-        DiagramKind::Pv => (AxisVar::V, AxisVar::P),
-        DiagramKind::Pt => (AxisVar::T, AxisVar::P),
-        DiagramKind::Ps => (AxisVar::S, AxisVar::P),
-        DiagramKind::Th => (AxisVar::H, AxisVar::T),
-    };
-
-    if swap_axes {
-        std::mem::swap(&mut x, &mut y);
+fn sanitize_cp(value: f64) -> f64 {
+    if value.is_finite() {
+        return value;
     }
 
-    (x, y)
+    // Для графика тоже не хотим NaN/inf: подменяем на большое конечное число,
+    // если не удаётся посчитать разумное приближение.
+    const CAP: f64 = 1e12;
+    if value.is_sign_negative() { -CAP } else { CAP }
+}
+
+fn quality_x(state: &WaterState) -> f64 {
+    if state.region != Region::Region4 {
+        return f64::NAN;
+    }
+
+    let p = state.p;
+    let v = state.v.inner();
+    let Ok(liq) = saturation::saturated_liquid(p) else {
+        return f64::NAN;
+    };
+    let Ok(vap) = saturation::saturated_vapor(p) else {
+        return f64::NAN;
+    };
+
+    let v_liq = liq.v.inner();
+    let v_vap = vap.v.inner();
+    let denom = v_vap - v_liq;
+    if !denom.is_finite() || denom.abs() < 1e-15 {
+        return f64::NAN;
+    }
+
+    ((v - v_liq) / denom).clamp(0.0, 1.0)
+}
+
+fn axis_value(var: AxisVar, state: &WaterState) -> f64 {
+    match var {
+        AxisVar::P => state.p.inner(),
+        AxisVar::T => state.t.inner(),
+        AxisVar::V => state.v.inner(),
+        AxisVar::Rho => state.rho.inner(),
+        AxisVar::H => state.h.inner(),
+        AxisVar::S => state.s.inner(),
+        AxisVar::U => state.u.inner(),
+        AxisVar::Cp => {
+            let raw = state.cp.inner();
+            if raw.is_finite() {
+                raw
+            } else if state.region == Region::Region4 {
+                let x = quality_x(state);
+                if !x.is_finite() {
+                    sanitize_cp(raw)
+                } else {
+                    let p = state.p;
+                    let Ok(liq) = saturation::saturated_liquid(p) else {
+                        return sanitize_cp(raw);
+                    };
+                    let Ok(vap) = saturation::saturated_vapor(p) else {
+                        return sanitize_cp(raw);
+                    };
+                    let cp = liq.cp.inner() + x * (vap.cp.inner() - liq.cp.inner());
+                    if cp.is_finite() { cp } else { sanitize_cp(raw) }
+                }
+            } else {
+                sanitize_cp(raw)
+            }
+        }
+        AxisVar::W => state.w.inner(),
+        AxisVar::X => quality_x(state),
+    }
+}
+
+fn axis_value_dome(var: AxisVar, state: &WaterState, quality: f64) -> f64 {
+    if matches!(var, AxisVar::X) {
+        return quality;
+    }
+    axis_value(var, state)
 }
 
 fn metric_value(var: AxisVar, value: f64) -> f64 {
+    // Для v-диаграмм размах по оси v большой, из-за чего адаптивное уточнение
+    // недодаёт точек в области малого v. В метрике используем ln(v).
     match var {
         AxisVar::V => value.max(1e-12).ln(),
         _ => value,
     }
 }
 
-fn axis_labels(kind: DiagramKind, swap_axes: bool) -> (&'static str, &'static str) {
-    let (x, y) = match kind {
-        DiagramKind::Ts => ("Энтропия s, кДж/(кг·К)", "Температура T, К"),
-        DiagramKind::Hs => ("Энтропия s, кДж/(кг·К)", "Энтальпия h, кДж/кг"),
-        DiagramKind::Ph => ("Энтальпия h, кДж/кг", "Давление p, МПа"),
-        DiagramKind::Tv => ("Удельный объем v, м3/кг", "Температура T, К"),
-        DiagramKind::Pv => ("Удельный объем v, м3/кг", "Давление p, МПа"),
-        DiagramKind::Pt => ("Температура T, К", "Давление p, МПа"),
-        DiagramKind::Ps => ("Энтропия s, кДж/(кг·К)", "Давление p, МПа"),
-        DiagramKind::Th => ("Энтальпия h, кДж/кг", "Температура T, К"),
-    };
-
-    if swap_axes { (y, x) } else { (x, y) }
+fn clamp_positive_range(mut min: f64, mut max: f64) -> (f64, f64) {
+    if min > max {
+        std::mem::swap(&mut min, &mut max);
+    }
+    let eps = 1e-12;
+    if !min.is_finite() || min <= 0.0 {
+        min = eps;
+    }
+    if !max.is_finite() || max <= min {
+        max = min * 10.0;
+    }
+    (min, max)
 }
 
-fn default_limits(kind: DiagramKind, swap_axes: bool) -> (f64, f64, f64, f64) {
-    let (mut x_min, mut x_max, mut y_min, mut y_max) = match kind {
-        DiagramKind::Pt => (273.15, 1000.0, 0.001, 100.0),
-        DiagramKind::Pv => (0.001, 2.0, 0.001, 100.0),
-        DiagramKind::Ps => (0.0, 10.0, 0.001, 100.0),
-        DiagramKind::Ph => (0.0, 4000.0, 0.001, 100.0),
-        DiagramKind::Tv => (0.001, 2.0, 273.15, 1000.0),
-        DiagramKind::Ts => (0.0, 10.0, 273.15, 1000.0),
-        DiagramKind::Th => (0.0, 4000.0, 273.15, 1000.0),
-        DiagramKind::Hs => (0.0, 10.0, 0.0, 4000.0),
+fn plot_range_from_raw(min_raw: f64, max_raw: f64, log: bool) -> (f64, f64) {
+    let (mut min, mut max) = if log {
+        let (min, max) = clamp_positive_range(min_raw, max_raw);
+        (min.log10(), max.log10())
+    } else {
+        (min_raw.min(max_raw), min_raw.max(max_raw))
     };
 
-    if swap_axes {
-        std::mem::swap(&mut x_min, &mut y_min);
-        std::mem::swap(&mut x_max, &mut y_max);
+    if (max - min).abs() < 1e-12 {
+        min -= 1.0;
+        max += 1.0;
     }
 
-    (x_min, x_max, y_min, y_max)
+    (min, max)
+}
+
+fn transform(value: f64, log: bool) -> Option<f64> {
+    if !value.is_finite() {
+        return None;
+    }
+    if log {
+        if value <= 0.0 {
+            return None;
+        }
+        Some(value.log10())
+    } else {
+        Some(value)
+    }
 }
 
 const SAT_P_MIN: f64 = 0.000611657_f64;
@@ -114,29 +187,27 @@ const SAT_REL_TOL_DEFAULT: f64 = 0.00035;
 const SAT_REL_TOL_V: f64 = 0.00015;
 const SAT_PRE_SAMPLES: usize = 32;
 
-static DOME_CACHE: OnceLock<Mutex<HashMap<(DiagramKind, bool), Arc<Vec<(f64, f64)>>>>> =
+static DOME_CACHE: OnceLock<Mutex<HashMap<(AxisVar, AxisVar), Arc<Vec<(f64, f64)>>>>> =
     OnceLock::new();
 
 fn saturation_pressure(t: f64) -> f64 {
     (SAT_P_MIN.ln() + t * (SAT_P_MAX.ln() - SAT_P_MIN.ln())).exp()
 }
 
-fn eval_saturation_point(
-    kind: DiagramKind,
-    swap_axes: bool,
-    quality: f64,
-    t: f64,
-) -> Option<(f64, f64)> {
+fn eval_saturation_point(x_var: AxisVar, y_var: AxisVar, quality: f64, t: f64) -> Option<(f64, f64)> {
     let pressure = saturation_pressure(t);
     let state = if quality <= 0.0 {
         saturation::saturated_liquid(pressure.into()).ok()?
     } else {
         saturation::saturated_vapor(pressure.into()).ok()?
     };
-    Some(project_state(kind, swap_axes, &state))
+    Some((
+        axis_value_dome(x_var, &state, quality),
+        axis_value_dome(y_var, &state, quality),
+    ))
 }
 
-fn estimate_dome_spans(kind: DiagramKind, swap_axes: bool) -> (f64, f64, f64, f64) {
+fn estimate_dome_spans(x_var: AxisVar, y_var: AxisVar) -> (f64, f64, f64, f64) {
     let mut min_lin_x = f64::INFINITY;
     let mut max_lin_x = f64::NEG_INFINITY;
     let mut min_lin_y = f64::INFINITY;
@@ -147,7 +218,6 @@ fn estimate_dome_spans(kind: DiagramKind, swap_axes: bool) -> (f64, f64, f64, f6
     let mut min_met_y = f64::INFINITY;
     let mut max_met_y = f64::NEG_INFINITY;
 
-    let (x_var, y_var) = axis_vars(kind, swap_axes);
     let qualities = [0.0, 1.0];
     for &quality in &qualities {
         for i in 0..SAT_PRE_SAMPLES {
@@ -156,7 +226,7 @@ fn estimate_dome_spans(kind: DiagramKind, swap_axes: bool) -> (f64, f64, f64, f6
             } else {
                 i as f64 / (SAT_PRE_SAMPLES - 1) as f64
             };
-            if let Some((x, y)) = eval_saturation_point(kind, swap_axes, quality, t) {
+            if let Some((x, y)) = eval_saturation_point(x_var, y_var, quality, t) {
                 if x.is_finite() && y.is_finite() {
                     min_lin_x = min_lin_x.min(x);
                     max_lin_x = max_lin_x.max(x);
@@ -196,11 +266,9 @@ fn estimate_dome_spans(kind: DiagramKind, swap_axes: bool) -> (f64, f64, f64, f6
 }
 
 fn refine_saturation_segment(
-    kind: DiagramKind,
-    swap_axes: bool,
-    quality: f64,
     x_var: AxisVar,
     y_var: AxisVar,
+    quality: f64,
     lin_span_x: f64,
     lin_span_y: f64,
     met_span_x: f64,
@@ -218,7 +286,7 @@ fn refine_saturation_segment(
     }
 
     let mid_t = 0.5 * (t0 + t1);
-    let Some(pm) = eval_saturation_point(kind, swap_axes, quality, mid_t) else {
+    let Some(pm) = eval_saturation_point(x_var, y_var, quality, mid_t) else {
         out.push(p0);
         return;
     };
@@ -262,11 +330,9 @@ fn refine_saturation_segment(
 
     if need_refine {
         refine_saturation_segment(
-            kind,
-            swap_axes,
-            quality,
             x_var,
             y_var,
+            quality,
             lin_span_x,
             lin_span_y,
             met_span_x,
@@ -279,11 +345,9 @@ fn refine_saturation_segment(
             out,
         );
         refine_saturation_segment(
-            kind,
-            swap_axes,
-            quality,
             x_var,
             y_var,
+            quality,
             lin_span_x,
             lin_span_y,
             met_span_x,
@@ -300,23 +364,20 @@ fn refine_saturation_segment(
     }
 }
 
-fn build_saturation_side(kind: DiagramKind, swap_axes: bool, quality: f64) -> Vec<(f64, f64)> {
-    let Some(p0) = eval_saturation_point(kind, swap_axes, quality, 0.0) else {
+fn build_saturation_side(x_var: AxisVar, y_var: AxisVar, quality: f64) -> Vec<(f64, f64)> {
+    let Some(p0) = eval_saturation_point(x_var, y_var, quality, 0.0) else {
         return Vec::new();
     };
-    let Some(p1) = eval_saturation_point(kind, swap_axes, quality, 1.0) else {
+    let Some(p1) = eval_saturation_point(x_var, y_var, quality, 1.0) else {
         return Vec::new();
     };
 
-    let (x_var, y_var) = axis_vars(kind, swap_axes);
-    let (lin_span_x, lin_span_y, met_span_x, met_span_y) = estimate_dome_spans(kind, swap_axes);
+    let (lin_span_x, lin_span_y, met_span_x, met_span_y) = estimate_dome_spans(x_var, y_var);
     let mut points = Vec::new();
     refine_saturation_segment(
-        kind,
-        swap_axes,
-        quality,
         x_var,
         y_var,
+        quality,
         lin_span_x,
         lin_span_y,
         met_span_x,
@@ -332,17 +393,18 @@ fn build_saturation_side(kind: DiagramKind, swap_axes: bool, quality: f64) -> Ve
     points
 }
 
-fn compute_dome_points(kind: DiagramKind, swap_axes: bool) -> Arc<Vec<(f64, f64)>> {
-    let liquid = build_saturation_side(kind, swap_axes, 0.0);
+fn compute_dome_points(x_var: AxisVar, y_var: AxisVar) -> Arc<Vec<(f64, f64)>> {
+    let liquid = build_saturation_side(x_var, y_var, 0.0);
     if liquid.is_empty() {
         return Arc::new(Vec::new());
     }
 
-    if kind == DiagramKind::Pt {
+    // В p-T (и T-p) диаграммах линия насыщения совпадает для x=0 и x=1, поэтому не дублируем путь.
+    if (x_var == AxisVar::T && y_var == AxisVar::P) || (x_var == AxisVar::P && y_var == AxisVar::T) {
         return Arc::new(liquid);
     }
 
-    let mut vapor = build_saturation_side(kind, swap_axes, 1.0);
+    let mut vapor = build_saturation_side(x_var, y_var, 1.0);
     vapor.reverse();
 
     let mut dome = liquid;
@@ -350,20 +412,20 @@ fn compute_dome_points(kind: DiagramKind, swap_axes: bool) -> Arc<Vec<(f64, f64)
     Arc::new(dome)
 }
 
-fn dome_points_cached(kind: DiagramKind, swap_axes: bool) -> Arc<Vec<(f64, f64)>> {
+fn dome_points_cached(x_var: AxisVar, y_var: AxisVar) -> Arc<Vec<(f64, f64)>> {
     let cache = DOME_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut cache) = cache.lock() {
-        if let Some(points) = cache.get(&(kind, swap_axes)) {
+        if let Some(points) = cache.get(&(x_var, y_var)) {
             return points.clone();
         }
-        let points = compute_dome_points(kind, swap_axes);
-        cache.insert((kind, swap_axes), points.clone());
+        let points = compute_dome_points(x_var, y_var);
+        cache.insert((x_var, y_var), points.clone());
         return points;
     }
-    compute_dome_points(kind, swap_axes)
+    compute_dome_points(x_var, y_var)
 }
 
-fn collect_limits(state: &AppState) -> (f64, f64, f64, f64) {
+fn collect_raw_limits(state: &AppState) -> (f64, f64, f64, f64) {
     if !state.autoscale {
         let (x_min, mut x_max, y_min, mut y_max) = state.custom_limits;
         if x_max <= x_min {
@@ -382,10 +444,18 @@ fn collect_limits(state: &AppState) -> (f64, f64, f64, f64) {
 
     for dataset in state.datasets.iter().filter(|dataset| dataset.visible) {
         for point in &dataset.points {
-            let (x, y) = project_state(state.plot_type, state.swap_axes, point);
+            let x = axis_value(state.plot_x, point);
+            let y = axis_value(state.plot_y, point);
             if !x.is_finite() || !y.is_finite() {
                 continue;
             }
+            if state.plot_x_log && x <= 0.0 {
+                continue;
+            }
+            if state.plot_y_log && y <= 0.0 {
+                continue;
+            }
+
             min_x = min_x.min(x);
             max_x = max_x.max(x);
             min_y = min_y.min(y);
@@ -394,12 +464,45 @@ fn collect_limits(state: &AppState) -> (f64, f64, f64, f64) {
     }
 
     if !min_x.is_finite() || !min_y.is_finite() {
-        return default_limits(state.plot_type, state.swap_axes);
+        let (x_min, x_max) = default_range(state.plot_x);
+        let (y_min, y_max) = default_range(state.plot_y);
+        return (x_min, x_max, y_min, y_max);
     }
 
     let pad_x = ((max_x - min_x).abs() * 0.1).max(1e-6);
     let pad_y = ((max_y - min_y).abs() * 0.1).max(1e-6);
     (min_x - pad_x, max_x + pad_x, min_y - pad_y, max_y + pad_y)
+}
+
+fn dome_segments(dome: &[(f64, f64)], x_log: bool, y_log: bool) -> Vec<Vec<(f64, f64)>> {
+    let mut segments: Vec<Vec<(f64, f64)>> = Vec::new();
+    let mut current: Vec<(f64, f64)> = Vec::new();
+
+    for &(x, y) in dome {
+        let Some(tx) = transform(x, x_log) else {
+            if current.len() >= 2 {
+                segments.push(std::mem::take(&mut current));
+            } else {
+                current.clear();
+            }
+            continue;
+        };
+        let Some(ty) = transform(y, y_log) else {
+            if current.len() >= 2 {
+                segments.push(std::mem::take(&mut current));
+            } else {
+                current.clear();
+            }
+            continue;
+        };
+        current.push((tx, ty));
+    }
+
+    if current.len() >= 2 {
+        segments.push(current);
+    }
+
+    segments
 }
 
 /// Рендерит текущую диаграмму в RGB-буфер (24-bit).
@@ -428,8 +531,10 @@ pub fn render_plot_to_file(
 }
 
 fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotters::coord::Shift>) {
-    let (x_min, x_max, y_min, y_max) = collect_limits(state);
-    let (x_desc, y_desc) = axis_labels(state.plot_type, state.swap_axes);
+    let (x_min_raw, x_max_raw, y_min_raw, y_max_raw) = collect_raw_limits(state);
+
+    let (x_min, x_max) = plot_range_from_raw(x_min_raw, x_max_raw, state.plot_x_log);
+    let (y_min, y_max) = plot_range_from_raw(y_min_raw, y_max_raw, state.plot_y_log);
 
     let mut chart = match ChartBuilder::on(root)
         .margin(36)
@@ -441,20 +546,27 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
         Err(_) => return,
     };
 
-    chart
-        .configure_mesh()
-        .x_desc(x_desc)
-        .y_desc(y_desc)
-        .light_line_style(WHITE.mix(0.7))
-        .draw()
-        .ok();
+    {
+        let mut mesh = chart.configure_mesh();
+        mesh.x_desc(axis_desc_ru(state.plot_x))
+            .y_desc(axis_desc_ru(state.plot_y))
+            .light_line_style(WHITE.mix(0.7));
+        if state.plot_x_log {
+            mesh.x_label_formatter(&|v| format!("{:.3e}", 10_f64.powf(*v)));
+        }
+        if state.plot_y_log {
+            mesh.y_label_formatter(&|v| format!("{:.3e}", 10_f64.powf(*v)));
+        }
+        mesh.draw().ok();
+    }
 
     if state.show_dome {
-        let dome_points = dome_points_cached(state.plot_type, state.swap_axes);
-        if !dome_points.is_empty() {
+        let dome_points = dome_points_cached(state.plot_x, state.plot_y);
+        let segments = dome_segments(dome_points.as_slice(), state.plot_x_log, state.plot_y_log);
+        for seg in segments.into_iter() {
             chart
                 .draw_series(LineSeries::new(
-                    dome_points.iter().copied(),
+                    seg.into_iter(),
                     RGBColor(180, 0, 255).stroke_width(2),
                 ))
                 .ok();
@@ -471,16 +583,19 @@ fn draw_core<DB: DrawingBackend>(state: &AppState, root: &DrawingArea<DB, plotte
         color_idx += 1;
         let radius = if dataset.points.len() > 1000 { 2 } else { 4 };
 
+        let x_log = state.plot_x_log;
+        let y_log = state.plot_y_log;
+
         chart
             .draw_series(dataset.points.iter().filter_map(|point| {
-                let (x, y) = project_state(state.plot_type, state.swap_axes, point);
-                if !x.is_finite() || !y.is_finite() {
+                let x = axis_value(state.plot_x, point);
+                let y = axis_value(state.plot_y, point);
+                let tx = transform(x, x_log)?;
+                let ty = transform(y, y_log)?;
+                if tx < x_min || tx > x_max || ty < y_min || ty > y_max {
                     return None;
                 }
-                if x < x_min || x > x_max || y < y_min || y > y_max {
-                    return None;
-                }
-                Some(Circle::new((x, y), radius, color.filled()))
+                Some(Circle::new((tx, ty), radius, color.filled()))
             }))
             .ok()
             .map(|series| {

@@ -1,6 +1,6 @@
 {
   "build": {
     "beforeBuildCommand": "env NO_COLOR=true trunk build --release",
-    "beforeDevCommand": "env NO_COLOR=true trunk serve --release"
+    "beforeDevCommand": "env NO_COLOR=true WEBKIT_DISABLE_DMABUF_RENDERER=1 trunk serve --release"
   }
 }

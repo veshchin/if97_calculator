@@ -1,4 +1,4 @@
-//! UI-вкладка построения диаграмм.
+//! UI-вкладка построения графиков.
 
 use crate::plot::renderer::render_plot_to_buffer;
 use crate::state::{AppState, Message};
@@ -10,58 +10,39 @@ use fltk::{
     group::*,
     image::RgbImage,
     input::*,
-    menu::*,
+    menu::Choice,
     prelude::*,
 };
-use if97_app_api::DiagramKind;
+use if97_app_api::AxisVar;
 
-fn choice_index_to_plot(index: i32) -> DiagramKind {
-    match index {
-        1 => DiagramKind::Pv,
-        2 => DiagramKind::Ps,
-        3 => DiagramKind::Ph,
-        4 => DiagramKind::Tv,
-        5 => DiagramKind::Ts,
-        6 => DiagramKind::Th,
-        7 => DiagramKind::Hs,
-        _ => DiagramKind::Pt,
+fn axis_label_ru(var: AxisVar) -> &'static str {
+    match var {
+        AxisVar::P => "Давление p, МПа",
+        AxisVar::T => "Температура T, К",
+        AxisVar::V => "Удельный объем v, м3/кг",
+        AxisVar::Rho => "Плотность rho, кг/м3",
+        AxisVar::H => "Энтальпия h, кДж/кг",
+        AxisVar::S => "Энтропия s, кДж/(кг·К)",
+        AxisVar::U => "Внутренняя энергия u, кДж/кг",
+        AxisVar::Cp => "Изобарная теплоемкость cp, кДж/(кг·К)",
+        AxisVar::W => "Скорость звука w, м/с",
+        AxisVar::X => "Степень сухости x",
     }
-}
-
-fn plot_to_choice_index(kind: DiagramKind) -> i32 {
-    match kind {
-        DiagramKind::Pt => 0,
-        DiagramKind::Pv => 1,
-        DiagramKind::Ps => 2,
-        DiagramKind::Ph => 3,
-        DiagramKind::Tv => 4,
-        DiagramKind::Ts => 5,
-        DiagramKind::Th => 6,
-        DiagramKind::Hs => 7,
-    }
-}
-
-fn axis_labels(kind: DiagramKind, swap_axes: bool) -> (&'static str, &'static str) {
-    let (x, y) = match kind {
-        DiagramKind::Pt => ("X: Температура T", "Y: Давление p"),
-        DiagramKind::Pv => ("X: Удельный объем v", "Y: Давление p"),
-        DiagramKind::Ps => ("X: Энтропия s", "Y: Давление p"),
-        DiagramKind::Ph => ("X: Энтальпия h", "Y: Давление p"),
-        DiagramKind::Tv => ("X: Удельный объем v", "Y: Температура T"),
-        DiagramKind::Ts => ("X: Энтропия s", "Y: Температура T"),
-        DiagramKind::Th => ("X: Энтальпия h", "Y: Температура T"),
-        DiagramKind::Hs => ("X: Энтропия s", "Y: Энтальпия h"),
-    };
-    if swap_axes { (y, x) } else { (x, y) }
 }
 
 #[allow(dead_code)]
-/// Вкладка UI для отрисовки диаграмм и экспорта в PNG.
+/// Вкладка UI для отрисовки графиков и экспорта в PNG.
 pub struct PlotTab {
     /// Корневой контейнер вкладки.
     pub group: Group,
-    /// Выбор типа диаграммы.
-    pub choice_plot_type: Choice,
+    /// Выпадающий список выбора величины по оси X.
+    pub choice_x: Choice,
+    /// Выпадающий список выбора величины по оси Y.
+    pub choice_y: Choice,
+    /// Логарифмическая шкала по X.
+    pub check_x_log: CheckButton,
+    /// Логарифмическая шкала по Y.
+    pub check_y_log: CheckButton,
     /// Область отрисовки (изображение устанавливается как `RgbImage`).
     pub plot_frame: Frame,
     /// Ручной минимум X.
@@ -83,34 +64,46 @@ impl PlotTab {
     pub fn new(sender: Sender<Message>) -> Self {
         let group = Group::new(10, 35, 1030, 655, " Графики ");
 
-        let mut choice_plot_type = Choice::new(20, 45, 180, 30, "Тип диаграммы:");
-        choice_plot_type.set_align(Align::TopLeft);
-        choice_plot_type.add_choice("p-T|p-v|p-s|p-h|T-v|T-s|T-h|h-s");
-        choice_plot_type.set_value(0);
+        let axis_choices = AxisVar::ALL
+            .iter()
+            .map(|&var| axis_label_ru(var))
+            .collect::<Vec<_>>()
+            .join("|");
 
-        let mut btn_select_data = Button::new(210, 45, 140, 30, "Выбрать данные");
-        let mut check_dome = CheckButton::new(360, 45, 180, 30, "Показывать купол");
+        let mut choice_x = Choice::new(20, 45, 170, 30, "X");
+        choice_x.add_choice(&axis_choices);
+        choice_x.set_value(AxisVar::T.to_index() as i32);
+
+        let mut choice_y = Choice::new(210, 45, 170, 30, "Y");
+        choice_y.add_choice(&axis_choices);
+        choice_y.set_value(AxisVar::P.to_index() as i32);
+
+        let mut check_dome = CheckButton::new(400, 45, 110, 30, "Купол");
         check_dome.set_value(true);
 
-        let mut check_swap = CheckButton::new(550, 45, 130, 30, "Поменять оси");
-        check_swap.set_value(false);
+        let mut check_x_log = CheckButton::new(520, 45, 80, 30, "log X");
+        check_x_log.set_value(false);
+        let mut check_y_log = CheckButton::new(610, 45, 80, 30, "log Y");
+        check_y_log.set_value(false);
 
-        let mut btn_export_plot = Button::new(690, 45, 150, 30, "Экспорт в PNG");
+        let mut btn_select_data = Button::new(700, 45, 140, 30, "Выбрать данные");
+
+        let mut btn_export_plot = Button::new(850, 45, 170, 30, "Экспорт в PNG");
         btn_export_plot.set_color(Color::from_rgb(100, 149, 237));
         btn_export_plot.set_label_color(Color::White);
 
         let mut check_autoscale = CheckButton::new(20, 85, 120, 30, "Автомасштаб");
         check_autoscale.set_value(true);
 
-        let mut axis_x_label = Frame::new(155, 86, 110, 24, "X: Температура T");
+        let mut axis_x_label = Frame::new(155, 86, 260, 24, "X: Температура T, К");
         axis_x_label.set_align(Align::Left | Align::Inside);
-        let mut inp_x_min = Input::new(270, 85, 70, 30, "");
-        let mut inp_x_max = Input::new(350, 85, 70, 30, "");
+        let mut inp_x_min = Input::new(420, 85, 70, 30, "");
+        let mut inp_x_max = Input::new(500, 85, 70, 30, "");
 
-        let mut axis_y_label = Frame::new(435, 86, 110, 24, "Y: Давление p");
+        let mut axis_y_label = Frame::new(585, 86, 260, 24, "Y: Давление p, МПа");
         axis_y_label.set_align(Align::Left | Align::Inside);
-        let mut inp_y_min = Input::new(550, 85, 70, 30, "");
-        let mut inp_y_max = Input::new(630, 85, 70, 30, "");
+        let mut inp_y_min = Input::new(850, 85, 70, 30, "");
+        let mut inp_y_max = Input::new(930, 85, 70, 30, "");
 
         inp_x_min.set_value("273.15");
         inp_x_max.set_value("1000.0");
@@ -121,27 +114,45 @@ impl PlotTab {
         inp_y_min.deactivate();
         inp_y_max.deactivate();
 
-        let mut btn_apply_limits = Button::new(720, 85, 150, 30, "Применить масштаб");
+        let mut btn_apply_limits = Button::new(20, 125, 150, 30, "Применить масштаб");
         btn_apply_limits.deactivate();
 
-        let mut plot_frame = Frame::new(20, 130, 1000, 515, "");
+        let mut plot_frame = Frame::new(20, 165, 1000, 480, "");
         plot_frame.set_color(Color::White);
         plot_frame.set_frame(FrameType::FlatBox);
 
         group.end();
 
-        choice_plot_type.set_callback({
+        choice_x.set_callback({
             let s = sender.clone();
-            move |c| s.send(Message::ChangePlotType(choice_index_to_plot(c.value())))
+            move |c| {
+                let idx = c.value().max(0) as usize;
+                let var = AxisVar::from_index(idx);
+                c.set_value(var.to_index() as i32);
+                s.send(Message::SetPlotX(var));
+            }
+        });
+        choice_y.set_callback({
+            let s = sender.clone();
+            move |c| {
+                let idx = c.value().max(0) as usize;
+                let var = AxisVar::from_index(idx);
+                c.set_value(var.to_index() as i32);
+                s.send(Message::SetPlotY(var));
+            }
         });
 
         check_dome.set_callback({
             let s = sender.clone();
             move |c| s.send(Message::ToggleDome(c.value()))
         });
-        check_swap.set_callback({
+        check_x_log.set_callback({
             let s = sender.clone();
-            move |c| s.send(Message::ToggleSwapAxes(c.value()))
+            move |c| s.send(Message::TogglePlotXLog(c.value()))
+        });
+        check_y_log.set_callback({
+            let s = sender.clone();
+            move |c| s.send(Message::TogglePlotYLog(c.value()))
         });
 
         check_autoscale.set_callback({
@@ -198,7 +209,10 @@ impl PlotTab {
 
         Self {
             group,
-            choice_plot_type,
+            choice_x,
+            choice_y,
+            check_x_log,
+            check_y_log,
             plot_frame,
             inp_x_min,
             inp_x_max,
@@ -211,11 +225,16 @@ impl PlotTab {
 
     /// Синхронизирует контролы вкладки с текущим состоянием приложения.
     pub fn sync_controls(&mut self, state: &AppState) {
-        self.choice_plot_type
-            .set_value(plot_to_choice_index(state.plot_type));
-        let (x_label, y_label) = axis_labels(state.plot_type, state.swap_axes);
-        self.axis_x_label.set_label(x_label);
-        self.axis_y_label.set_label(y_label);
+        self.choice_x.set_value(state.plot_x.to_index() as i32);
+        self.choice_y.set_value(state.plot_y.to_index() as i32);
+        self.check_x_log.set_value(state.plot_x_log);
+        self.check_y_log.set_value(state.plot_y_log);
+
+        self.axis_x_label
+            .set_label(&format!("X: {}", axis_label_ru(state.plot_x)));
+        self.axis_y_label
+            .set_label(&format!("Y: {}", axis_label_ru(state.plot_y)));
+
         self.inp_x_min.set_value(&format!("{:.6}", state.custom_limits.0));
         self.inp_x_max.set_value(&format!("{:.6}", state.custom_limits.1));
         self.inp_y_min.set_value(&format!("{:.6}", state.custom_limits.2));

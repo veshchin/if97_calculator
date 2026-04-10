@@ -90,6 +90,10 @@ mod serde_f64_value {
     }
 }
 
+fn default_nan() -> f64 {
+    f64::NAN
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 /// Режим ввода параметров для расчета термодинамического состояния.
@@ -151,6 +155,88 @@ pub enum DiagramKind {
     Th,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+/// Величина (переменная), которую можно выбрать для оси графика.
+///
+/// Варианты соответствуют полям [`StateDto`]. `x` (степень сухости) имеет смысл только
+/// для Region 4; для остальных регионов в DTO хранится `NaN`.
+pub enum AxisVar {
+    /// Давление `p` (МПа).
+    P,
+    /// Температура `T` (K).
+    T,
+    /// Удельный объем `v` (м^3/кг).
+    V,
+    /// Плотность `rho` (кг/м^3).
+    Rho,
+    /// Энтальпия `h` (кДж/кг).
+    H,
+    /// Энтропия `s` (кДж/(кг*K)).
+    S,
+    /// Внутренняя энергия `u` (кДж/кг).
+    U,
+    /// Изобарная теплоемкость `cp` (кДж/(кг*K)).
+    Cp,
+    /// Скорость звука `w` (м/с).
+    W,
+    /// Степень сухости `x` (0..=1) для Region 4 (массовая доля пара).
+    X,
+}
+
+impl AxisVar {
+    /// Стабильный порядок вариантов (используется для UI-слайдеров).
+    pub const ALL: [AxisVar; 10] = [
+        AxisVar::P,
+        AxisVar::T,
+        AxisVar::V,
+        AxisVar::Rho,
+        AxisVar::H,
+        AxisVar::S,
+        AxisVar::U,
+        AxisVar::Cp,
+        AxisVar::W,
+        AxisVar::X,
+    ];
+
+    /// Человекочитаемая подпись (с единицами).
+    pub fn label(self) -> &'static str {
+        match self {
+            AxisVar::P => "p (MPa)",
+            AxisVar::T => "T (K)",
+            AxisVar::V => "v (m^3/kg)",
+            AxisVar::Rho => "rho (kg/m^3)",
+            AxisVar::H => "h (kJ/kg)",
+            AxisVar::S => "s (kJ/kgK)",
+            AxisVar::U => "u (kJ/kg)",
+            AxisVar::Cp => "cp (kJ/kgK)",
+            AxisVar::W => "w (m/s)",
+            AxisVar::X => "x",
+        }
+    }
+
+    /// Индекс в [`AxisVar::ALL`] (для UI).
+    pub fn to_index(self) -> usize {
+        match self {
+            AxisVar::P => 0,
+            AxisVar::T => 1,
+            AxisVar::V => 2,
+            AxisVar::Rho => 3,
+            AxisVar::H => 4,
+            AxisVar::S => 5,
+            AxisVar::U => 6,
+            AxisVar::Cp => 7,
+            AxisVar::W => 8,
+            AxisVar::X => 9,
+        }
+    }
+
+    /// Восстанавливает вариант по индексу UI (с безопасным fallback).
+    pub fn from_index(index: usize) -> AxisVar {
+        AxisVar::ALL.get(index).copied().unwrap_or(AxisVar::P)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 /// Запрос на расчет одной точки.
 pub struct SingleCalcRequest {
@@ -201,6 +287,9 @@ pub struct StateDto {
     #[serde(with = "serde_f64_value")]
     /// Скорость звука `w` (м/с).
     pub w: f64,
+    #[serde(default = "default_nan", with = "serde_f64_value")]
+    /// Степень сухости `x` (массовая доля пара, 0..=1) для Region 4. Для остальных регионов: `NaN`.
+    pub x: f64,
     /// Строковое представление региона IF97 (например, `"Region1"`).
     pub region: String,
 }
@@ -219,10 +308,10 @@ pub struct TableRowResult {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 /// Параметры запроса купола насыщения для построения диаграмм.
 pub struct DomeRequest {
-    /// Тип диаграммы.
-    pub chart_type: DiagramKind,
-    /// Поменять оси местами (используется UI для удобства отображения).
-    pub swap_axes: bool,
+    /// Величина по оси X.
+    pub x_var: AxisVar,
+    /// Величина по оси Y.
+    pub y_var: AxisVar,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

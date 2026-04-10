@@ -3,7 +3,7 @@
 //! Эти структуры используются внутри Yew и хранят как текущие значения полей ввода,
 //! так и сохраненные пользователем результаты расчета.
 
-use if97_app_api::{DiagramKind, InputMode, StateDto, TableRowResult};
+use if97_app_api::{InputMode, StateDto, TableRowResult};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use yew::UseStateHandle;
@@ -99,8 +99,6 @@ impl SavedItemsState {
 
 /// Контекст Yew для доступа к сохраненным данным.
 pub type AppContext = UseStateHandle<SavedItemsState>;
-/// Тип диаграммы (используется в графиках).
-pub type ChartType = DiagramKind;
 
 #[derive(Clone, Debug, PartialEq, Default)]
 /// Параметры генерации строк для табличного ввода.
@@ -142,6 +140,8 @@ pub struct PersistentState {
     pub t_res: Rc<Vec<TableRowResult>>,
     /// Точность вывода в таблице.
     pub t_precision: usize,
+    /// Использовать научный формат в табличном выводе (например, `1.0694e3`).
+    pub t_scientific: bool,
     /// Параметры генерации строк таблицы (по режимам).
     pub t_gen_params: HashMap<InputMode, GenParams>,
     /// Состояние панели сохраненных данных.
@@ -165,6 +165,7 @@ impl Default for PersistentState {
             t_mode: InputMode::Pt,
             t_res: Rc::new(Vec::new()),
             t_precision: 4,
+            t_scientific: false,
             t_gen_params: HashMap::new(),
             right_sidebar_open: false,
             plot_selected: HashSet::new(),

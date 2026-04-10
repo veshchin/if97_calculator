@@ -2,14 +2,16 @@
 
 use crate::plot::{draw_diagram, project_state, ChartOptions, PlotSeries};
 use crate::tauri_api;
-use crate::types::{AppContext, ChartType, SavedItem, StateContext};
+use crate::types::{AppContext, SavedItem, StateContext};
 use gloo_timers::callback::Timeout;
-use if97_app_api::{DomeRequest, PlotPoint};
+use if97_app_api::{AxisVar, DomeRequest, PlotPoint};
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::{closure::Closure, JsCast};
-use web_sys::{HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElement, MouseEvent, WheelEvent};
+use web_sys::{
+    HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElement, MouseEvent, WheelEvent,
+};
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
@@ -20,39 +22,17 @@ pub struct PlotsProps {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-/// Переменная, которая отображается на оси графика.
-pub enum AxisVar {
-    /// Давление `p` (МПа).
-    P,
-    /// Температура `T` (K).
-    T,
-    /// Энтальпия `h` (кДж/кг).
-    H,
-    /// Энтропия `s` (кДж/(кг*K)).
-    S,
-    /// Удельный объем `v` (м^3/кг).
-    V,
-}
-
-impl AxisVar {
-    fn name(&self) -> &'static str {
-        match self {
-            Self::P => "p (MPa)",
-            Self::T => "T (K)",
-            Self::H => "h (kJ/kg)",
-            Self::S => "s (kJ/kgK)",
-            Self::V => "v (m^3/kg)",
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
 struct PlotRanges {
     p: (f64, f64),
     t: (f64, f64),
+    v: (f64, f64),
+    rho: (f64, f64),
     h: (f64, f64),
     s: (f64, f64),
-    v: (f64, f64),
+    u: (f64, f64),
+    cp: (f64, f64),
+    w: (f64, f64),
+    x: (f64, f64),
 }
 
 impl Default for PlotRanges {
@@ -60,9 +40,14 @@ impl Default for PlotRanges {
         Self {
             p: (0.001, 100.0),
             t: (273.15, 1000.0),
+            v: (0.001, 2.0),
+            rho: (1.0, 1200.0),
             h: (0.0, 4000.0),
             s: (0.0, 10.0),
-            v: (0.001, 2.0),
+            u: (0.0, 3500.0),
+            cp: (0.0, 50.0),
+            w: (0.0, 2000.0),
+            x: (0.0, 1.0),
         }
     }
 }
@@ -72,9 +57,14 @@ impl PlotRanges {
         match var {
             AxisVar::P => self.p,
             AxisVar::T => self.t,
+            AxisVar::V => self.v,
+            AxisVar::Rho => self.rho,
             AxisVar::H => self.h,
             AxisVar::S => self.s,
-            AxisVar::V => self.v,
+            AxisVar::U => self.u,
+            AxisVar::Cp => self.cp,
+            AxisVar::W => self.w,
+            AxisVar::X => self.x,
         }
     }
 
@@ -82,9 +72,14 @@ impl PlotRanges {
         match var {
             AxisVar::P => self.p.0 = value,
             AxisVar::T => self.t.0 = value,
+            AxisVar::V => self.v.0 = value,
+            AxisVar::Rho => self.rho.0 = value,
             AxisVar::H => self.h.0 = value,
             AxisVar::S => self.s.0 = value,
-            AxisVar::V => self.v.0 = value,
+            AxisVar::U => self.u.0 = value,
+            AxisVar::Cp => self.cp.0 = value,
+            AxisVar::W => self.w.0 = value,
+            AxisVar::X => self.x.0 = value,
         }
     }
 
@@ -92,30 +87,16 @@ impl PlotRanges {
         match var {
             AxisVar::P => self.p.1 = value,
             AxisVar::T => self.t.1 = value,
+            AxisVar::V => self.v.1 = value,
+            AxisVar::Rho => self.rho.1 = value,
             AxisVar::H => self.h.1 = value,
             AxisVar::S => self.s.1 = value,
-            AxisVar::V => self.v.1 = value,
+            AxisVar::U => self.u.1 = value,
+            AxisVar::Cp => self.cp.1 = value,
+            AxisVar::W => self.w.1 = value,
+            AxisVar::X => self.x.1 = value,
         }
     }
-}
-
-fn get_axes(chart_type: ChartType, swap_axes: bool) -> (AxisVar, AxisVar) {
-    let (mut x_var, mut y_var) = match chart_type {
-        ChartType::Ts => (AxisVar::S, AxisVar::T),
-        ChartType::Hs => (AxisVar::S, AxisVar::H),
-        ChartType::Ph => (AxisVar::H, AxisVar::P),
-        ChartType::Tv => (AxisVar::V, AxisVar::T),
-        ChartType::Pv => (AxisVar::V, AxisVar::P),
-        ChartType::Pt => (AxisVar::T, AxisVar::P),
-        ChartType::Ps => (AxisVar::S, AxisVar::P),
-        ChartType::Th => (AxisVar::H, AxisVar::T),
-    };
-
-    if swap_axes {
-        std::mem::swap(&mut x_var, &mut y_var);
-    }
-
-    (x_var, y_var)
 }
 
 #[function_component(PlotsTab)]
@@ -125,8 +106,10 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let state_ctx = use_context::<StateContext>().expect("Контекст состояния не найден");
 
     let canvas_ref = use_node_ref();
-    let chart_type = use_state(|| ChartType::Pt);
-    let swap_axes = use_state(|| false);
+    let x_axis = use_state(|| AxisVar::T);
+    let y_axis = use_state(|| AxisVar::P);
+    let x_log = use_state(|| false);
+    let y_log = use_state(|| false);
     let show_dome = use_state(|| true);
     let ranges = use_state(PlotRanges::default);
     let resize_tick = use_state(|| 0u32);
@@ -135,11 +118,12 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let dome_points = use_mut_ref(|| Rc::<Vec<PlotPoint>>::new(Vec::new()));
     let dome_rev = use_state(|| 0u32);
     let dome_req_id = use_mut_ref(|| 0u64);
-    let dome_cache = use_mut_ref(|| HashMap::<(ChartType, bool), Rc<Vec<PlotPoint>>>::new());
+    let dome_cache = use_mut_ref(|| HashMap::<(AxisVar, AxisVar), Rc<Vec<PlotPoint>>>::new());
     let pending_ranges = use_mut_ref(|| Option::<PlotRanges>::None);
     let pending_ranges_update = use_mut_ref(|| Option::<Timeout>::None);
 
-    let (x_var, y_var) = get_axes(*chart_type, *swap_axes);
+    let x_var = *x_axis;
+    let y_var = *y_axis;
     let x_range = ranges.get(x_var);
     let y_range = ranges.get(y_var);
     let schedule_ranges_update = Rc::new({
@@ -218,18 +202,18 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
 
     let selected_ids = state_ctx.plot_selected.clone();
     let series_list = use_memo(
-        (app_ctx.clone(), *chart_type, *swap_axes, selected_ids.clone()),
-        |(saved, chart_type, swap_axes, selected_ids)| {
+        (app_ctx.clone(), x_var, y_var, selected_ids.clone()),
+        |(saved, x_var, y_var, selected_ids)| {
             saved.items
                 .iter()
                 .filter(|item| selected_ids.contains(&item.id()))
                 .map(|item| {
                     let points = match item {
-                        SavedItem::Point(point) => vec![project_state(*chart_type, *swap_axes, &point.state)],
+                        SavedItem::Point(point) => vec![project_state(*x_var, *y_var, &point.state)],
                         SavedItem::Table(table) => table
                             .states
                             .iter()
-                            .map(|state| project_state(*chart_type, *swap_axes, state))
+                            .map(|state| project_state(*x_var, *y_var, state))
                             .collect(),
                     };
 
@@ -242,12 +226,12 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         },
     );
 
-    use_effect_with((*chart_type, *swap_axes, *show_dome), {
+    use_effect_with((x_var, y_var, *show_dome), {
         let dome_points = dome_points.clone();
         let dome_rev = dome_rev.clone();
         let dome_req_id = dome_req_id.clone();
         let dome_cache = dome_cache.clone();
-        move |(chart_type, swap_axes, show_dome)| {
+        move |(x_var, y_var, show_dome)| {
             let req_id = {
                 let mut id = dome_req_id.borrow_mut();
                 *id += 1;
@@ -257,7 +241,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
             if !*show_dome {
                 *dome_points.borrow_mut() = Rc::new(Vec::new());
             } else {
-                let cache_key = (*chart_type, *swap_axes);
+                let cache_key = (*x_var, *y_var);
                 if let Some(cached) = dome_cache.borrow().get(&cache_key) {
                     *dome_points.borrow_mut() = cached.clone();
                 } else {
@@ -269,12 +253,12 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                     let dome_rev = dome_rev.clone();
                     let dome_req_id = dome_req_id.clone();
                     let dome_cache = dome_cache.clone();
-                    let chart_type = *chart_type;
-                    let swap_axes = *swap_axes;
+                    let x_var = *x_var;
+                    let y_var = *y_var;
                     wasm_bindgen_futures::spawn_local(async move {
                         match tauri_api::calculate_dome(DomeRequest {
-                            chart_type,
-                            swap_axes,
+                            x_var,
+                            y_var,
                         })
                         .await
                         {
@@ -282,7 +266,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                                 let points = Rc::new(points);
                                 dome_cache
                                     .borrow_mut()
-                                    .insert((chart_type, swap_axes), points.clone());
+                                    .insert((x_var, y_var), points.clone());
                                 if *dome_req_id.borrow() == req_id {
                                     *dome_points.borrow_mut() = points;
                                     dome_rev.set(*dome_rev + 1);
@@ -303,8 +287,10 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
             canvas_ref.clone(),
             props.active,
             *resize_tick,
-            *chart_type,
-            *swap_axes,
+            x_var,
+            y_var,
+            *x_log,
+            *y_log,
             *show_dome,
             *ranges,
             *dome_rev,
@@ -316,8 +302,10 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                 canvas_ref,
                 is_active,
                 _resize_tick,
-                chart_type,
-                swap_axes,
+                x_var,
+                y_var,
+                x_log,
+                y_log,
                 show_dome,
                 ranges,
                 _dome_rev,
@@ -346,11 +334,12 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                         }
                     }
 
-                    let (x_var, y_var) = get_axes(*chart_type, *swap_axes);
                     let opts = ChartOptions {
                         show_dome: *show_dome,
-                        x_range: ranges.get(x_var),
-                        y_range: ranges.get(y_var),
+                        x_range: ranges.get(*x_var),
+                        y_range: ranges.get(*y_var),
+                        x_log: *x_log,
+                        y_log: *y_log,
                     };
                     let dome_points = dome_points.borrow();
                     if let Err(error) =
@@ -366,54 +355,177 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         },
     );
 
-    let on_chart_type_change = {
-        let chart_type = chart_type.clone();
-        Callback::from(move |event: Event| {
-            if let Some(select) = event.target_dyn_into::<HtmlSelectElement>() {
-                chart_type.set(match select.value().as_str() {
-                    "pt" => ChartType::Pt,
-                    "pv" => ChartType::Pv,
-                    "ph" => ChartType::Ph,
-                    "ps" => ChartType::Ps,
-                    "tv" => ChartType::Tv,
-                    "ts" => ChartType::Ts,
-                    "th" => ChartType::Th,
-                    "hs" => ChartType::Hs,
-                    _ => ChartType::Pt,
-                });
-            }
-        })
-    };
+    fn clamp_positive_range(mut min: f64, mut max: f64) -> (f64, f64) {
+        if min > max {
+            std::mem::swap(&mut min, &mut max);
+        }
+        let eps = 1e-12;
+        if !min.is_finite() || min <= 0.0 {
+            min = eps;
+        }
+        if !max.is_finite() || max <= min {
+            max = min * 10.0;
+        }
+        (min, max)
+    }
 
-    let toggle_swap = {
-        let swap_axes = swap_axes.clone();
-        Callback::from(move |_| swap_axes.set(!*swap_axes))
-    };
     let toggle_dome = {
         let show_dome = show_dome.clone();
         Callback::from(move |_| show_dome.set(!*show_dome))
     };
 
-    let on_min_change = |var: AxisVar| {
+    let on_x_axis_change = {
+        let x_axis = x_axis.clone();
         let ranges = ranges.clone();
+        let x_log = x_log.clone();
+        Callback::from(move |event: Event| {
+            if let Some(select) = event.target_dyn_into::<HtmlSelectElement>() {
+                if let Ok(index) = select.value().parse::<usize>() {
+                    let var = AxisVar::from_index(index);
+                    x_axis.set(var);
+                    if *x_log {
+                        let mut next = *ranges;
+                        let (min, max) = next.get(var);
+                        let (min, max) = clamp_positive_range(min, max);
+                        next.set_min(var, min);
+                        next.set_max(var, max);
+                        ranges.set(next);
+                    }
+                }
+            }
+        })
+    };
+
+    let on_y_axis_change = {
+        let y_axis = y_axis.clone();
+        let ranges = ranges.clone();
+        let y_log = y_log.clone();
+        Callback::from(move |event: Event| {
+            if let Some(select) = event.target_dyn_into::<HtmlSelectElement>() {
+                if let Ok(index) = select.value().parse::<usize>() {
+                    let var = AxisVar::from_index(index);
+                    y_axis.set(var);
+                    if *y_log {
+                        let mut next = *ranges;
+                        let (min, max) = next.get(var);
+                        let (min, max) = clamp_positive_range(min, max);
+                        next.set_min(var, min);
+                        next.set_max(var, max);
+                        ranges.set(next);
+                    }
+                }
+            }
+        })
+    };
+
+    let toggle_x_log = {
+        let x_log = x_log.clone();
+        let ranges = ranges.clone();
+        Callback::from(move |_| {
+            let next_flag = !*x_log;
+            x_log.set(next_flag);
+            if next_flag {
+                let mut next = *ranges;
+                let (min, max) = next.get(x_var);
+                let (min, max) = clamp_positive_range(min, max);
+                next.set_min(x_var, min);
+                next.set_max(x_var, max);
+                ranges.set(next);
+            }
+        })
+    };
+
+    let toggle_y_log = {
+        let y_log = y_log.clone();
+        let ranges = ranges.clone();
+        Callback::from(move |_| {
+            let next_flag = !*y_log;
+            y_log.set(next_flag);
+            if next_flag {
+                let mut next = *ranges;
+                let (min, max) = next.get(y_var);
+                let (min, max) = clamp_positive_range(min, max);
+                next.set_min(y_var, min);
+                next.set_max(y_var, max);
+                ranges.set(next);
+            }
+        })
+    };
+
+    let on_x_min_change = {
+        let ranges = ranges.clone();
+        let x_log = x_log.clone();
         Callback::from(move |event: Event| {
             if let Some(input) = event.target_dyn_into::<HtmlInputElement>() {
                 if let Ok(value) = input.value().parse::<f64>() {
                     let mut next = *ranges;
-                    next.set_min(var, value);
+                    next.set_min(x_var, value);
+                    if *x_log {
+                        let (min, max) = next.get(x_var);
+                        let (min, max) = clamp_positive_range(min, max);
+                        next.set_min(x_var, min);
+                        next.set_max(x_var, max);
+                    }
                     ranges.set(next);
                 }
             }
         })
     };
 
-    let on_max_change = |var: AxisVar| {
+    let on_x_max_change = {
         let ranges = ranges.clone();
+        let x_log = x_log.clone();
         Callback::from(move |event: Event| {
             if let Some(input) = event.target_dyn_into::<HtmlInputElement>() {
                 if let Ok(value) = input.value().parse::<f64>() {
                     let mut next = *ranges;
-                    next.set_max(var, value);
+                    next.set_max(x_var, value);
+                    if *x_log {
+                        let (min, max) = next.get(x_var);
+                        let (min, max) = clamp_positive_range(min, max);
+                        next.set_min(x_var, min);
+                        next.set_max(x_var, max);
+                    }
+                    ranges.set(next);
+                }
+            }
+        })
+    };
+
+    let on_y_min_change = {
+        let ranges = ranges.clone();
+        let y_log = y_log.clone();
+        Callback::from(move |event: Event| {
+            if let Some(input) = event.target_dyn_into::<HtmlInputElement>() {
+                if let Ok(value) = input.value().parse::<f64>() {
+                    let mut next = *ranges;
+                    next.set_min(y_var, value);
+                    if *y_log {
+                        let (min, max) = next.get(y_var);
+                        let (min, max) = clamp_positive_range(min, max);
+                        next.set_min(y_var, min);
+                        next.set_max(y_var, max);
+                    }
+                    ranges.set(next);
+                }
+            }
+        })
+    };
+
+    let on_y_max_change = {
+        let ranges = ranges.clone();
+        let y_log = y_log.clone();
+        Callback::from(move |event: Event| {
+            if let Some(input) = event.target_dyn_into::<HtmlInputElement>() {
+                if let Ok(value) = input.value().parse::<f64>() {
+                    let mut next = *ranges;
+                    next.set_max(y_var, value);
+                    if *y_log {
+                        let (min, max) = next.get(y_var);
+                        let (min, max) = clamp_positive_range(min, max);
+                        next.set_min(y_var, min);
+                        next.set_max(y_var, max);
+                    }
                     ranges.set(next);
                 }
             }
@@ -436,8 +548,10 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let on_wheel = {
         let ranges = ranges.clone();
         let schedule_ranges_update = schedule_ranges_update.clone();
-        let chart_type = *chart_type;
-        let swap_axes = *swap_axes;
+        let x_var = x_var;
+        let y_var = y_var;
+        let x_is_log = *x_log;
+        let y_is_log = *y_log;
         Callback::from(move |event: WheelEvent| {
             event.prevent_default();
             if let Some(element) = event.target_dyn_into::<HtmlElement>() {
@@ -451,18 +565,44 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                 let fy = event.offset_y() as f64 / height;
                 let zoom = if event.delta_y() > 0.0 { 1.1 } else { 0.9 };
                 let mut next = *ranges;
-                let (x_var, y_var) = get_axes(chart_type, swap_axes);
+
                 let x_range = next.get(x_var);
                 let y_range = next.get(y_var);
-                let mouse_x = x_range.0 + fx * (x_range.1 - x_range.0);
-                let mouse_y = y_range.1 - fy * (y_range.1 - y_range.0);
-                let new_span_x = (x_range.1 - x_range.0) * zoom;
-                let new_span_y = (y_range.1 - y_range.0) * zoom;
 
-                next.set_min(x_var, mouse_x - fx * new_span_x);
-                next.set_max(x_var, mouse_x + (1.0 - fx) * new_span_x);
-                next.set_min(y_var, mouse_y - (1.0 - fy) * new_span_y);
-                next.set_max(y_var, mouse_y + fy * new_span_y);
+                if x_is_log {
+                    let (min, max) = clamp_positive_range(x_range.0, x_range.1);
+                    let (min, max) = (min.log10(), max.log10());
+                    let mouse = min + fx * (max - min);
+                    let new_span = (max - min) * zoom;
+                    let new_min = mouse - fx * new_span;
+                    let new_max = mouse + (1.0 - fx) * new_span;
+                    next.set_min(x_var, 10_f64.powf(new_min));
+                    next.set_max(x_var, 10_f64.powf(new_max));
+                } else {
+                    let (min, max) = (x_range.0.min(x_range.1), x_range.0.max(x_range.1));
+                    let mouse = min + fx * (max - min);
+                    let new_span = (max - min) * zoom;
+                    next.set_min(x_var, mouse - fx * new_span);
+                    next.set_max(x_var, mouse + (1.0 - fx) * new_span);
+                }
+
+                if y_is_log {
+                    let (min, max) = clamp_positive_range(y_range.0, y_range.1);
+                    let (min, max) = (min.log10(), max.log10());
+                    let mouse = max - fy * (max - min);
+                    let new_span = (max - min) * zoom;
+                    let new_min = mouse - (1.0 - fy) * new_span;
+                    let new_max = mouse + fy * new_span;
+                    next.set_min(y_var, 10_f64.powf(new_min));
+                    next.set_max(y_var, 10_f64.powf(new_max));
+                } else {
+                    let (min, max) = (y_range.0.min(y_range.1), y_range.0.max(y_range.1));
+                    let mouse = max - fy * (max - min);
+                    let new_span = (max - min) * zoom;
+                    next.set_min(y_var, mouse - (1.0 - fy) * new_span);
+                    next.set_max(y_var, mouse + fy * new_span);
+                }
+
                 schedule_ranges_update(next);
             }
         })
@@ -492,8 +632,10 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         let last_mouse = last_mouse.clone();
         let ranges = ranges.clone();
         let schedule_ranges_update = schedule_ranges_update.clone();
-        let chart_type = *chart_type;
-        let swap_axes = *swap_axes;
+        let x_var = x_var;
+        let y_var = y_var;
+        let x_is_log = *x_log;
+        let y_is_log = *y_log;
         Callback::from(move |event: MouseEvent| {
             if !*is_dragging {
                 return;
@@ -511,16 +653,39 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                 last_mouse.set((event.client_x() as f64, event.client_y() as f64));
 
                 let mut next = *ranges;
-                let (x_var, y_var) = get_axes(chart_type, swap_axes);
                 let x_range = next.get(x_var);
                 let y_range = next.get(y_var);
-                let x_shift = dx * (x_range.1 - x_range.0) / width;
-                let y_shift = dy * (y_range.1 - y_range.0) / height;
 
-                next.set_min(x_var, x_range.0 - x_shift);
-                next.set_max(x_var, x_range.1 - x_shift);
-                next.set_min(y_var, y_range.0 + y_shift);
-                next.set_max(y_var, y_range.1 + y_shift);
+                if x_is_log {
+                    let (min, max) = clamp_positive_range(x_range.0, x_range.1);
+                    let (min, max) = (min.log10(), max.log10());
+                    let shift = dx * (max - min) / width;
+                    let new_min = min - shift;
+                    let new_max = max - shift;
+                    next.set_min(x_var, 10_f64.powf(new_min));
+                    next.set_max(x_var, 10_f64.powf(new_max));
+                } else {
+                    let (min, max) = (x_range.0.min(x_range.1), x_range.0.max(x_range.1));
+                    let shift = dx * (max - min) / width;
+                    next.set_min(x_var, min - shift);
+                    next.set_max(x_var, max - shift);
+                }
+
+                if y_is_log {
+                    let (min, max) = clamp_positive_range(y_range.0, y_range.1);
+                    let (min, max) = (min.log10(), max.log10());
+                    let shift = dy * (max - min) / height;
+                    let new_min = min + shift;
+                    let new_max = max + shift;
+                    next.set_min(y_var, 10_f64.powf(new_min));
+                    next.set_max(y_var, 10_f64.powf(new_max));
+                } else {
+                    let (min, max) = (y_range.0.min(y_range.1), y_range.0.max(y_range.1));
+                    let shift = dy * (max - min) / height;
+                    next.set_min(y_var, min + shift);
+                    next.set_max(y_var, max + shift);
+                }
+
                 schedule_ranges_update(next);
             }
         })
@@ -540,13 +705,36 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         })
     };
 
-    let scale_input = |var: AxisVar, range: (f64, f64)| {
+    let axis_controls = |
+        axis: &'static str,
+        var: AxisVar,
+        is_log: bool,
+        range: (f64, f64),
+        on_axis_change: Callback<Event>,
+        on_toggle_log: Callback<MouseEvent>,
+        on_min_change: Callback<Event>,
+        on_max_change: Callback<Event>,
+    | {
         html! {
-            <div style="display: flex; align-items: center; gap: 5px; background: var(--hover-bg); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border);">
-                <span style="font-weight: 600; font-size: 0.85rem; width: 85px;">{ var.name() }</span>
-                <input type="number" step="any" class="styled-input" style="width: 90px; padding: 4px; font-size: 0.85rem;" value={range.0.to_string()} onchange={on_min_change(var)} />
+            <div style="display: flex; align-items: center; gap: 8px; background: var(--hover-bg); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);">
+                <span style="font-weight: 700; font-size: 0.85rem; width: 14px;">{ axis }</span>
+                <select class="styled-select" value={var.to_index().to_string()} onchange={on_axis_change} style="min-width: 160px; max-width: 240px;">
+                    { for AxisVar::ALL.iter().copied().map(|candidate| {
+                        let idx = candidate.to_index().to_string();
+                        html! {
+                            <option value={idx} selected={candidate == var}>
+                                { candidate.label() }
+                            </option>
+                        }
+                    }) }
+                </select>
+                <label class="toggle-label" style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+                    <input type="checkbox" checked={is_log} onclick={on_toggle_log} />
+                    { "log" }
+                </label>
+                <input type="number" step="any" class="styled-input" style="width: 90px; padding: 4px; font-size: 0.85rem;" value={range.0.to_string()} onchange={on_min_change} />
                 <span style="color: var(--text-muted);">{"-"}</span>
-                <input type="number" step="any" class="styled-input" style="width: 90px; padding: 4px; font-size: 0.85rem;" value={range.1.to_string()} onchange={on_max_change(var)} />
+                <input type="number" step="any" class="styled-input" style="width: 90px; padding: 4px; font-size: 0.85rem;" value={range.1.to_string()} onchange={on_max_change} />
             </div>
         }
     };
@@ -554,24 +742,31 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
             html! {
         <div class="charts-container fade-in" style="display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; position: relative;">
             <div class="top-toolbar" style="display: flex; flex-wrap: wrap; gap: 15px; padding: 10px 15px; background: var(--card-bg); border-bottom: 1px solid var(--border); align-items: center; flex-shrink: 0; z-index: 5;">
-                <select class="styled-select" onchange={on_chart_type_change} style="padding: 6px 10px;">
-                    <option value="pt" selected={*chart_type == ChartType::Pt}>{ "p-T диаграмма" }</option>
-                    <option value="pv" selected={*chart_type == ChartType::Pv}>{ "p-v диаграмма" }</option>
-                    <option value="ps" selected={*chart_type == ChartType::Ps}>{ "p-s диаграмма" }</option>
-                    <option value="ph" selected={*chart_type == ChartType::Ph}>{ "p-h диаграмма" }</option>
-                    <option value="tv" selected={*chart_type == ChartType::Tv}>{ "T-v диаграмма" }</option>
-                    <option value="ts" selected={*chart_type == ChartType::Ts}>{ "T-s диаграмма" }</option>
-                    <option value="th" selected={*chart_type == ChartType::Th}>{ "T-h диаграмма" }</option>
-                    <option value="hs" selected={*chart_type == ChartType::Hs}>{ "h-s диаграмма" }</option>
-                </select>
+                { axis_controls(
+                    "X",
+                    x_var,
+                    *x_log,
+                    x_range,
+                    on_x_axis_change.clone(),
+                    toggle_x_log.clone(),
+                    on_x_min_change.clone(),
+                    on_x_max_change.clone(),
+                ) }
+                { axis_controls(
+                    "Y",
+                    y_var,
+                    *y_log,
+                    y_range,
+                    on_y_axis_change.clone(),
+                    toggle_y_log.clone(),
+                    on_y_min_change.clone(),
+                    on_y_max_change.clone(),
+                ) }
 
-                <div style="display: flex; gap: 10px; border-right: 1px solid var(--border); padding-right: 15px;">
-                    <label class="toggle-label" style="font-size: 0.85rem;"><input type="checkbox" checked={*swap_axes} onclick={toggle_swap} /> { "Оси местами" }</label>
-                    <label class="toggle-label" style="font-size: 0.85rem;"><input type="checkbox" checked={*show_dome} onclick={toggle_dome} /> { "Купол" }</label>
-                </div>
-
-                { scale_input(x_var, x_range) }
-                { scale_input(y_var, y_range) }
+                <label class="toggle-label" style="font-size: 0.85rem; padding: 6px 10px; background: var(--hover-bg); border-radius: 8px; border: 1px solid var(--border);">
+                    <input type="checkbox" checked={*show_dome} onclick={toggle_dome} />
+                    { "Купол" }
+                </label>
 
                 <button class="btn btn-outline btn-sm" onclick={on_reset_scales} title="Сбросить диапазоны графика">{"Сброс"}</button>
                 <button class="btn btn-success btn-sm" onclick={on_save_png}>{"Сохранить PNG"}</button>

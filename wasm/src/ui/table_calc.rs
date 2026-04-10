@@ -11,7 +11,17 @@ use yew::prelude::*;
 const MAX_VISIBLE_ROWS: usize = 300;
 const MAX_GENERATED_ROWS: usize = 20_000;
 
-fn format_value(value: f64, precision: usize) -> String {
+fn sanitize_cp(value: f64) -> f64 {
+    // Backend старается отдавать конечное значение cp (в т.ч. для Region4).
+    // На всякий случай не пропускаем NaN/inf в таблицу/экспорт.
+    if value.is_finite() {
+        return value;
+    }
+    const CAP: f64 = 1e12;
+    if value.is_sign_negative() { -CAP } else { CAP }
+}
+
+fn format_value_ui(value: f64, precision: usize, scientific: bool) -> String {
     if value.is_infinite() {
         if value.is_sign_negative() {
             "-∞".to_string()
@@ -20,6 +30,24 @@ fn format_value(value: f64, precision: usize) -> String {
         }
     } else if value.is_nan() {
         "NaN".to_string()
+    } else if scientific {
+        format!("{:.*e}", precision, value)
+    } else {
+        format!("{:.*}", precision, value)
+    }
+}
+
+fn format_value_csv(value: f64, precision: usize, scientific: bool) -> String {
+    if value.is_nan() {
+        "NaN".to_string()
+    } else if value.is_infinite() {
+        if value.is_sign_negative() {
+            "-inf".to_string()
+        } else {
+            "inf".to_string()
+        }
+    } else if scientific {
+        format!("{:.*e}", precision, value)
     } else {
         format!("{:.*}", precision, value)
     }
@@ -249,6 +277,17 @@ pub fn table_calc_tab() -> Html {
         })
     };
 
+    let on_scientific_change = {
+        let state_ctx = state_ctx.clone();
+        Callback::from(move |event: Event| {
+            if let Some(input) = event.target_dyn_into::<HtmlInputElement>() {
+                let mut next = (*state_ctx).clone();
+                next.t_scientific = input.checked();
+                state_ctx.set(next);
+            }
+        })
+    };
+
     let on_gen_input = |field: &'static str| {
         let state_ctx = state_ctx.clone();
         Callback::from(move |event: InputEvent| {
@@ -381,41 +420,35 @@ pub fn table_calc_tab() -> Html {
     let on_export_csv = {
         let rows = s.t_res.clone();
         let precision = s.t_precision;
+        let scientific = s.t_scientific;
         let notice = notice.clone();
         Callback::from(move |_| {
             if rows.is_empty() {
                 return;
             }
 
-            let mut csv = String::from("строка;p (МПа);T (К);v (м3/кг);rho (кг/м3);h (кДж/кг);s (кДж/кгК);u (кДж/кг);cp (кДж/кгК);w (м/с);регион;ошибка\n");
+            let mut csv = String::from("строка;p (МПа);T (К);v (м3/кг);rho (кг/м3);h (кДж/кг);s (кДж/кгК);u (кДж/кг);cp (кДж/кгК);w (м/с);x;регион;ошибка\n");
             for row in rows.iter() {
                 if let Some(state) = &row.state {
+                    let cp = sanitize_cp(state.cp);
                     csv.push_str(&format!(
-                        "{};{:.*};{:.*};{:.*};{:.*};{:.*};{:.*};{:.*};{:.*};{:.*};{};\n",
+                        "{};{};{};{};{};{};{};{};{};{};{};{};\n",
                         row.line_no,
-                        precision,
-                        state.p,
-                        precision,
-                        state.t,
-                        precision,
-                        state.v,
-                        precision,
-                        state.rho,
-                        precision,
-                        state.h,
-                        precision,
-                        state.s,
-                        precision,
-                        state.u,
-                        precision,
-                        state.cp,
-                        precision,
-                        state.w,
+                        format_value_csv(state.p, precision, scientific),
+                        format_value_csv(state.t, precision, scientific),
+                        format_value_csv(state.v, precision, scientific),
+                        format_value_csv(state.rho, precision, scientific),
+                        format_value_csv(state.h, precision, scientific),
+                        format_value_csv(state.s, precision, scientific),
+                        format_value_csv(state.u, precision, scientific),
+                        format_value_csv(cp, precision, scientific),
+                        format_value_csv(state.w, precision, scientific),
+                        format_value_csv(state.x, precision, scientific),
                         state.region
                     ));
                 } else {
                     csv.push_str(&format!(
-                        "{};;;;;;;;;;;{}\n",
+                        "{};;;;;;;;;;;;{}\n",
                         row.line_no,
                         row.error.clone().unwrap_or_default()
                     ));
@@ -545,6 +578,12 @@ pub fn table_calc_tab() -> Html {
                                 }) }
                             </select>
 
+                            <label class="table-top-label">{"Sci:"}</label>
+                            <label class="toggle-label" title="Научный формат (например 1.0694e3)">
+                                <input type="checkbox" checked={s.t_scientific} onchange={on_scientific_change.clone()} />
+                                {"e"}
+                            </label>
+
                             <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
                             <button class="btn btn-outline btn-sm" onclick={on_load_file}>{"Открыть"}</button>
                             <button class="btn btn-success btn-sm" onclick={on_export_csv} disabled={s.t_res.is_empty()} style={if s.t_res.is_empty() { "opacity: 0.5; cursor: not-allowed;" } else { "" }}>{"Экспорт CSV"}</button>
@@ -609,7 +648,8 @@ pub fn table_calc_tab() -> Html {
                                         <th class={classes!("table-col-head", (*selected_col == Some(6)).then_some("table-selected-head"))} onclick={on_select_col(6)}>{"u (kJ/kg)"}</th>
                                         <th class={classes!("table-col-head", (*selected_col == Some(7)).then_some("table-selected-head"))} onclick={on_select_col(7)}>{"cp (kJ/kgK)"}</th>
                                         <th class={classes!("table-col-head", (*selected_col == Some(8)).then_some("table-selected-head"))} onclick={on_select_col(8)}>{"w (m/s)"}</th>
-                                        <th class={classes!("table-col-head", (*selected_col == Some(9)).then_some("table-selected-head"))} onclick={on_select_col(9)}>{"Регион"}</th>
+                                        <th class={classes!("table-col-head", (*selected_col == Some(9)).then_some("table-selected-head"))} onclick={on_select_col(9)}>{"x"}</th>
+                                        <th class={classes!("table-col-head", (*selected_col == Some(10)).then_some("table-selected-head"))} onclick={on_select_col(10)}>{"Регион"}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -629,26 +669,28 @@ pub fn table_calc_tab() -> Html {
                                             })
                                         };
                                         if let Some(state) = &row.state {
+                                            let cp = sanitize_cp(state.cp);
                                             html! {
                                                 <tr>
                                                     <td class={classes!("table-index-cell", row_selected.then_some("table-selected-cell"))} onclick={on_row_select.clone()}>{row_no}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(0)).then_some("table-selected-cell"))}>{format_value(state.p, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(1)).then_some("table-selected-cell"))}>{format_value(state.t, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(2)).then_some("table-selected-cell"))}>{format_value(state.v, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(3)).then_some("table-selected-cell"))}>{format_value(state.rho, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(4)).then_some("table-selected-cell"))}>{format_value(state.h, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(5)).then_some("table-selected-cell"))}>{format_value(state.s, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(6)).then_some("table-selected-cell"))}>{format_value(state.u, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(7)).then_some("table-selected-cell"))}>{format_value(state.cp, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(8)).then_some("table-selected-cell"))}>{format_value(state.w, s.t_precision)}</td>
-                                                    <td class={classes!((row_selected || *selected_col == Some(9)).then_some("table-selected-cell"))}>{state.region.clone()}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(0)).then_some("table-selected-cell"))}>{format_value_ui(state.p, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(1)).then_some("table-selected-cell"))}>{format_value_ui(state.t, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(2)).then_some("table-selected-cell"))}>{format_value_ui(state.v, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(3)).then_some("table-selected-cell"))}>{format_value_ui(state.rho, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(4)).then_some("table-selected-cell"))}>{format_value_ui(state.h, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(5)).then_some("table-selected-cell"))}>{format_value_ui(state.s, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(6)).then_some("table-selected-cell"))}>{format_value_ui(state.u, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(7)).then_some("table-selected-cell"))}>{format_value_ui(cp, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(8)).then_some("table-selected-cell"))}>{format_value_ui(state.w, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(9)).then_some("table-selected-cell"))}>{format_value_ui(state.x, s.t_precision, s.t_scientific)}</td>
+                                                    <td class={classes!((row_selected || *selected_col == Some(10)).then_some("table-selected-cell"))}>{state.region.clone()}</td>
                                                 </tr>
                                             }
                                         } else {
                                             html! {
                                                 <tr class="table-error-row">
                                                     <td class={classes!("table-index-cell", row_selected.then_some("table-selected-cell"))} onclick={on_row_select}>{row_no}</td>
-                                                    <td colspan="10" class="table-error-message">
+                                                    <td colspan="11" class="table-error-message">
                                                         {format!("Ошибка: {}", row.error.clone().unwrap_or_else(|| "Неизвестная ошибка".to_string()))}
                                                     </td>
                                                 </tr>

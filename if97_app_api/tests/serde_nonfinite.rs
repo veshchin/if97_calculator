@@ -12,6 +12,7 @@ fn state_dto_serializes_non_finite_as_strings() {
         u: 50.0,
         cp: f64::INFINITY,
         w: f64::NAN,
+        x: f64::NAN,
         region: "Test".to_string(),
     };
 
@@ -34,6 +35,7 @@ fn state_dto_deserializes_non_finite_strings() {
         "u": 50.0,
         "cp": "inf",
         "w": "-inf",
+        "x": "nan",
         "region": "Test"
     });
 
@@ -41,4 +43,3 @@ fn state_dto_deserializes_non_finite_strings() {
     assert!(dto.cp.is_infinite() && !dto.cp.is_sign_negative());
     assert!(dto.w.is_infinite() && dto.w.is_sign_negative());
 }
-

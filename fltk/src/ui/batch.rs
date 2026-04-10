@@ -4,7 +4,7 @@ use crate::state::{BatchRow, Message};
 use fltk::app;
 use fltk::app::Sender;
 use fltk::browser::HoldBrowser;
-use fltk::button::Button;
+use fltk::button::{Button, CheckButton};
 use fltk::draw;
 use fltk::enums::{Align, CallbackTrigger, Color, Font, FrameType};
 use fltk::frame::Frame;
@@ -14,10 +14,11 @@ use fltk::menu::Choice;
 use fltk::prelude::*;
 use fltk::table::{Table, TableContext};
 use if97_app_api::InputMode;
+use if97_core::{saturation, Region};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const TABLE_HEADERS: [&str; 10] = [
+const TABLE_HEADERS: [&str; 11] = [
     "p (МПа)",
     "T (K)",
     "v (м3/кг)",
@@ -27,6 +28,7 @@ const TABLE_HEADERS: [&str; 10] = [
     "u (кДж/кг)",
     "cp (кДж/кгК)",
     "w (м/с)",
+    "x",
     "Регион",
 ];
 
@@ -60,7 +62,72 @@ fn mode_labels(mode: InputMode) -> (&'static str, &'static str) {
     }
 }
 
-fn format_value(value: f64, precision: usize) -> String {
+fn sanitize_cp(value: f64) -> f64 {
+    if value.is_finite() {
+        return value;
+    }
+
+    // В Region4 ядро возвращает cp = +inf (физически стремится к бесконечности).
+    // Для UI/таблицы нужен конечный числовой вывод, поэтому берём приближение как
+    // массово-взвешенную интерполяцию между cp насыщенной жидкости и пара.
+    const CAP: f64 = 1e12;
+    if value.is_sign_negative() { -CAP } else { CAP }
+}
+
+fn quality_x(state: &if97_core::WaterState) -> f64 {
+    if state.region != Region::Region4 {
+        return f64::NAN;
+    }
+
+    let p = state.p;
+    let v = state.v.inner();
+    let Ok(liq) = saturation::saturated_liquid(p) else {
+        return f64::NAN;
+    };
+    let Ok(vap) = saturation::saturated_vapor(p) else {
+        return f64::NAN;
+    };
+
+    let v_liq = liq.v.inner();
+    let v_vap = vap.v.inner();
+    let denom = v_vap - v_liq;
+    if !denom.is_finite() || denom.abs() < 1e-15 {
+        return f64::NAN;
+    }
+
+    ((v - v_liq) / denom).clamp(0.0, 1.0)
+}
+
+fn cp_value(state: &if97_core::WaterState, x_hint: f64) -> f64 {
+    let raw = state.cp.inner();
+    if raw.is_finite() {
+        return raw;
+    }
+
+    if state.region != Region::Region4 {
+        return sanitize_cp(raw);
+    }
+
+    let x = if x_hint.is_finite() { x_hint } else { quality_x(state) };
+    if !x.is_finite() {
+        return sanitize_cp(raw);
+    }
+
+    let p = state.p;
+    let Ok(liq) = saturation::saturated_liquid(p) else {
+        return sanitize_cp(raw);
+    };
+    let Ok(vap) = saturation::saturated_vapor(p) else {
+        return sanitize_cp(raw);
+    };
+
+    let cp_liq = liq.cp.inner();
+    let cp_vap = vap.cp.inner();
+    let cp = cp_liq + x * (cp_vap - cp_liq);
+    if cp.is_finite() { cp } else { sanitize_cp(raw) }
+}
+
+fn format_value(value: f64, precision: usize, scientific: bool) -> String {
     if value.is_infinite() {
         if value.is_sign_negative() {
             "-∞".to_string()
@@ -69,6 +136,8 @@ fn format_value(value: f64, precision: usize) -> String {
         }
     } else if value.is_nan() {
         "NaN".to_string()
+    } else if scientific {
+        format!("{:.*e}", precision, value)
     } else {
         format!("{:.*}", precision, value)
     }
@@ -123,6 +192,8 @@ pub struct BatchTab {
     pub choice_mode: Choice,
     /// Выбор точности вывода.
     pub choice_precision: Choice,
+    /// Чекбокс научного формата вывода.
+    pub check_scientific: CheckButton,
     /// Поле ввода табличных данных.
     pub input_area: MultilineInput,
     /// Поле ввода имени для сохранения таблицы.
@@ -169,6 +240,10 @@ impl BatchTab {
         choice_precision.add_choice("0|1|2|3|4|5|6|7|8|9|10");
         choice_precision.set_value(4);
 
+        let mut check_scientific = CheckButton::default().with_label("Sci");
+        check_scientific.set_tooltip("Научный формат (например 1.0694e3)");
+        check_scientific.set_value(false);
+
         let mut btn_open = Button::default().with_label("Открыть");
         let mut btn_export = Button::default().with_label("Экспорт CSV");
         let mut btn_clear = Button::default().with_label("Сброс выбора");
@@ -179,6 +254,7 @@ impl BatchTab {
 
         top.fixed(&choice_mode, 120);
         top.fixed(&choice_precision, 80);
+        top.fixed(&check_scientific, 70);
         top.fixed(&btn_open, 110);
         top.fixed(&btn_export, 120);
         top.fixed(&btn_clear, 120);
@@ -375,6 +451,11 @@ impl BatchTab {
             }
         });
 
+        check_scientific.set_callback({
+            let s = sender.clone();
+            move |c| s.send(Message::SetTableScientific(c.value()))
+        });
+
         input_area.set_callback({
             let s = sender.clone();
             let input_area = input_area.clone();
@@ -478,6 +559,7 @@ impl BatchTab {
             group,
             choice_mode,
             choice_precision,
+            check_scientific,
             input_area,
             save_name,
             saved_browser,
@@ -507,6 +589,11 @@ impl BatchTab {
         self.choice_precision.set_value(precision.min(10) as i32);
     }
 
+    /// Устанавливает режим научного вывода чисел в таблице.
+    pub fn set_scientific(&mut self, enabled: bool) {
+        self.check_scientific.set_value(enabled);
+    }
+
     /// Устанавливает текст табличного ввода.
     pub fn set_input(&mut self, text: &str) {
         self.input_area.set_value(text);
@@ -526,7 +613,7 @@ impl BatchTab {
     }
 
     /// Обновляет модель отображения и перерисовывает таблицу результата.
-    pub fn update_table(&mut self, rows: &[BatchRow], precision: usize) {
+    pub fn update_table(&mut self, rows: &[BatchRow], precision: usize, scientific: bool) {
         let display_rows = rows
             .iter()
             .map(|row| {
@@ -534,16 +621,19 @@ impl BatchTab {
                     .state
                     .as_ref()
                     .map(|state| {
+                        let x = quality_x(state);
+                        let cp = cp_value(state, x);
                         vec![
-                            format_value(state.p.inner(), precision),
-                            format_value(state.t.inner(), precision),
-                            format_value(state.v.inner(), precision),
-                            format_value(state.rho.inner(), precision),
-                            format_value(state.h.inner(), precision),
-                            format_value(state.s.inner(), precision),
-                            format_value(state.u.inner(), precision),
-                            format_value(state.cp.inner(), precision),
-                            format_value(state.w.inner(), precision),
+                            format_value(state.p.inner(), precision, scientific),
+                            format_value(state.t.inner(), precision, scientific),
+                            format_value(state.v.inner(), precision, scientific),
+                            format_value(state.rho.inner(), precision, scientific),
+                            format_value(state.h.inner(), precision, scientific),
+                            format_value(state.s.inner(), precision, scientific),
+                            format_value(state.u.inner(), precision, scientific),
+                            format_value(cp, precision, scientific),
+                            format_value(state.w.inner(), precision, scientific),
+                            format_value(x, precision, scientific),
                             format!("{:?}", state.region),
                         ]
                     })

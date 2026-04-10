@@ -1,6 +1,6 @@
 //! Состояние приложения и сообщения UI для FLTK-клиента.
 
-use if97_app_api::{DiagramKind, InputMode};
+use if97_app_api::{AxisVar, InputMode};
 use if97_core::WaterState;
 use tracing::info;
 
@@ -61,12 +61,16 @@ pub struct AppState {
     pub last_single_result: Option<WaterState>,
     /// Параметры последнего одиночного расчета (для восстановления UI).
     pub last_single_request: Option<(InputMode, String, String)>,
-    /// Тип диаграммы для вкладки графика.
-    pub plot_type: DiagramKind,
+    /// Величина по оси X на вкладке графика.
+    pub plot_x: AxisVar,
+    /// Величина по оси Y на вкладке графика.
+    pub plot_y: AxisVar,
     /// Показывать купол насыщения.
     pub show_dome: bool,
-    /// Поменять оси местами.
-    pub swap_axes: bool,
+    /// Логарифмическая шкала по оси X.
+    pub plot_x_log: bool,
+    /// Логарифмическая шкала по оси Y.
+    pub plot_y_log: bool,
     /// Автоматический подбор пределов осей.
     pub autoscale: bool,
     /// Пользовательские пределы осей (xmin, xmax, ymin, ymax).
@@ -75,6 +79,8 @@ pub struct AppState {
     pub single_precision: usize,
     /// Количество знаков после запятой в табличном расчете.
     pub table_precision: usize,
+    /// Использовать научный формат чисел в табличном выводе (например, `1.0694e3`).
+    pub table_scientific: bool,
 }
 
 impl AppState {
@@ -91,13 +97,16 @@ impl AppState {
             current_table_rows: Vec::new(),
             last_single_result: None,
             last_single_request: None,
-            plot_type: DiagramKind::Pt,
+            plot_x: AxisVar::T,
+            plot_y: AxisVar::P,
             show_dome: true,
-            swap_axes: false,
+            plot_x_log: false,
+            plot_y_log: false,
             autoscale: true,
             custom_limits: (273.15, 1000.0, 0.001, 100.0),
             single_precision: 4,
             table_precision: 4,
+            table_scientific: false,
         }
     }
 
@@ -195,6 +204,8 @@ pub enum Message {
     LoadBatchFile,
     /// Установить точность вывода (знаков после запятой) для табличного расчета.
     SetTablePrecision(usize),
+    /// Включить/выключить научный формат чисел в табличном выводе.
+    SetTableScientific(bool),
     /// Сохранить (или обновить) текущую таблицу в списке данных.
     SaveBatchTable {
         /// Имя сохраненной таблицы.
@@ -231,12 +242,16 @@ pub enum Message {
         v2_step: String,
     },
 
-    /// Изменить тип диаграммы на вкладке графика.
-    ChangePlotType(DiagramKind),
+    /// Установить величину по оси X на вкладке графика.
+    SetPlotX(AxisVar),
+    /// Установить величину по оси Y на вкладке графика.
+    SetPlotY(AxisVar),
     /// Показать/скрыть купол насыщения.
     ToggleDome(bool),
-    /// Поменять оси местами.
-    ToggleSwapAxes(bool),
+    /// Включить/выключить логарифмическую шкалу по оси X.
+    TogglePlotXLog(bool),
+    /// Включить/выключить логарифмическую шкалу по оси Y.
+    TogglePlotYLog(bool),
     /// Включить/выключить автомасштаб осей.
     SetAutoscale(bool),
     /// Применить ручные пределы осей (x_min, x_max, y_min, y_max).

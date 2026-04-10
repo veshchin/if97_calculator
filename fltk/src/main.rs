@@ -8,8 +8,8 @@ mod ui;
 
 use chrono::Local;
 use fltk::{app, browser::CheckBrowser, button::Button, dialog, prelude::*, window::Window};
-use if97_app_api::{DiagramKind, InputMode};
-use if97_core::{errors::If97Error, If97, WaterState};
+use if97_app_api::{AxisVar, InputMode};
+use if97_core::{errors::If97Error, saturation, If97, Region, WaterState};
 use std::fs;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -19,6 +19,21 @@ use tracing_subscriber::fmt::writer::MakeWriterExt;
 use crate::plot::renderer::render_plot_to_file;
 use crate::state::{AppState, BatchRow, Message, SavedData, SavedKind};
 use crate::ui::MainUI;
+
+fn default_range(var: AxisVar) -> (f64, f64) {
+    match var {
+        AxisVar::P => (0.001, 100.0),
+        AxisVar::T => (273.15, 1000.0),
+        AxisVar::V => (0.001, 2.0),
+        AxisVar::Rho => (1.0, 1200.0),
+        AxisVar::H => (0.0, 4000.0),
+        AxisVar::S => (0.0, 10.0),
+        AxisVar::U => (0.0, 3500.0),
+        AxisVar::Cp => (0.0, 50.0),
+        AxisVar::W => (0.0, 2000.0),
+        AxisVar::X => (0.0, 1.0),
+    }
+}
 
 #[derive(Clone)]
 struct LogBuffer(Arc<Mutex<String>>);
@@ -273,7 +288,7 @@ fn refresh_batch_result(
         .collect();
 
     ui.batch_tab
-        .update_table(&state.current_table_rows, state.table_precision);
+        .update_table(&state.current_table_rows, state.table_precision, state.table_scientific);
 
     if let Some(name) = saved_table_name(state, mode, &content) {
         ui.batch_tab.set_save_name(&name);
@@ -329,6 +344,85 @@ fn write_batch_export(
     filename: &str,
     delimiter: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    fn format_export_value(value: f64, precision: usize, scientific: bool) -> String {
+        if value.is_nan() {
+            "NaN".to_string()
+        } else if value.is_infinite() {
+            if value.is_sign_negative() {
+                "-inf".to_string()
+            } else {
+                "inf".to_string()
+            }
+        } else if scientific {
+            format!("{:.*e}", precision, value)
+        } else {
+            format!("{:.*}", precision, value)
+        }
+    }
+
+    fn sanitize_cp(value: f64) -> f64 {
+        if value.is_finite() {
+            return value;
+        }
+
+        // Для экспорта не пишем NaN/inf, а отдаём большое конечное число.
+        const CAP: f64 = 1e12;
+        if value.is_sign_negative() { -CAP } else { CAP }
+    }
+
+    fn quality_x(point: &WaterState) -> f64 {
+        if point.region != Region::Region4 {
+            return f64::NAN;
+        }
+
+        let p = point.p;
+        let v = point.v.inner();
+        let Ok(liq) = saturation::saturated_liquid(p) else {
+            return f64::NAN;
+        };
+        let Ok(vap) = saturation::saturated_vapor(p) else {
+            return f64::NAN;
+        };
+
+        let v_liq = liq.v.inner();
+        let v_vap = vap.v.inner();
+        let denom = v_vap - v_liq;
+        if !denom.is_finite() || denom.abs() < 1e-15 {
+            return f64::NAN;
+        }
+
+        ((v - v_liq) / denom).clamp(0.0, 1.0)
+    }
+
+    fn cp_value(point: &WaterState, x_hint: f64) -> f64 {
+        let raw = point.cp.inner();
+        if raw.is_finite() {
+            return raw;
+        }
+
+        if point.region != Region::Region4 {
+            return sanitize_cp(raw);
+        }
+
+        let x = if x_hint.is_finite() { x_hint } else { quality_x(point) };
+        if !x.is_finite() {
+            return sanitize_cp(raw);
+        }
+
+        let p = point.p;
+        let Ok(liq) = saturation::saturated_liquid(p) else {
+            return sanitize_cp(raw);
+        };
+        let Ok(vap) = saturation::saturated_vapor(p) else {
+            return sanitize_cp(raw);
+        };
+
+        let cp_liq = liq.cp.inner();
+        let cp_vap = vap.cp.inner();
+        let cp = cp_liq + x * (cp_vap - cp_liq);
+        if cp.is_finite() { cp } else { sanitize_cp(raw) }
+    }
+
     let mut writer = csv::WriterBuilder::new()
         .delimiter(delimiter)
         .from_path(filename)?;
@@ -344,29 +438,66 @@ fn write_batch_export(
         "u_kJ_kg",
         "cp_kJ_kgK",
         "w_m_s",
+        "x_vapor_fraction",
         "region",
         "error",
     ])?;
 
     for row in &state.current_table_rows {
         if let Some(point) = &row.state {
+            let x = quality_x(point);
+            let cp = cp_value(point, x);
             writer.write_record([
                 row.line_no.to_string(),
-                format!("{:.*}", state.table_precision, point.p.inner()),
-                format!("{:.*}", state.table_precision, point.t.inner()),
-                format!("{:.*}", state.table_precision, point.v.inner()),
-                format!("{:.*}", state.table_precision, point.rho.inner()),
-                format!("{:.*}", state.table_precision, point.h.inner()),
-                format!("{:.*}", state.table_precision, point.s.inner()),
-                format!("{:.*}", state.table_precision, point.u.inner()),
-                format!("{:.*}", state.table_precision, point.cp.inner()),
-                format!("{:.*}", state.table_precision, point.w.inner()),
+                format_export_value(
+                    point.p.inner(),
+                    state.table_precision,
+                    state.table_scientific,
+                ),
+                format_export_value(
+                    point.t.inner(),
+                    state.table_precision,
+                    state.table_scientific,
+                ),
+                format_export_value(
+                    point.v.inner(),
+                    state.table_precision,
+                    state.table_scientific,
+                ),
+                format_export_value(
+                    point.rho.inner(),
+                    state.table_precision,
+                    state.table_scientific,
+                ),
+                format_export_value(
+                    point.h.inner(),
+                    state.table_precision,
+                    state.table_scientific,
+                ),
+                format_export_value(
+                    point.s.inner(),
+                    state.table_precision,
+                    state.table_scientific,
+                ),
+                format_export_value(
+                    point.u.inner(),
+                    state.table_precision,
+                    state.table_scientific,
+                ),
+                format_export_value(cp, state.table_precision, state.table_scientific),
+                format_export_value(
+                    point.w.inner(),
+                    state.table_precision,
+                    state.table_scientific,
+                ),
+                format_export_value(x, state.table_precision, state.table_scientific),
                 format!("{:?}", point.region),
                 String::new(),
             ])?;
         } else {
             writer.write_record([
                 row.line_no.to_string(),
+                String::new(),
                 String::new(),
                 String::new(),
                 String::new(),
@@ -406,6 +537,7 @@ fn main() {
     main_ui.single_tab.set_precision(state.single_precision);
     main_ui.batch_tab.set_mode(InputMode::Pt);
     main_ui.batch_tab.set_precision(state.table_precision);
+    main_ui.batch_tab.set_scientific(state.table_scientific);
     main_ui.plot_tab.redraw_plot(&state);
     sync_saved_lists(&mut main_ui, &state);
 
@@ -515,7 +647,14 @@ fn main() {
                     state.table_precision = precision.min(10);
                     main_ui
                         .batch_tab
-                        .update_table(&state.current_table_rows, state.table_precision);
+                        .update_table(&state.current_table_rows, state.table_precision, state.table_scientific);
+                }
+                Message::SetTableScientific(enabled) => {
+                    state.table_scientific = enabled;
+                    main_ui.batch_tab.set_scientific(enabled);
+                    main_ui
+                        .batch_tab
+                        .update_table(&state.current_table_rows, state.table_precision, state.table_scientific);
                 }
                 Message::SaveBatchTable {
                     name,
@@ -611,19 +750,19 @@ fn main() {
                     }
                     Err(error) => dialog::alert(150, 200, &error),
                 },
-                Message::ChangePlotType(kind) => {
-                    state.plot_type = kind;
+                Message::SetPlotX(var) => {
+                    state.plot_x = var;
                     if state.autoscale {
-                        state.custom_limits = match kind {
-                            DiagramKind::Pt => (273.15, 1000.0, 0.001, 100.0),
-                            DiagramKind::Pv => (0.001, 2.0, 0.001, 100.0),
-                            DiagramKind::Ps => (0.0, 10.0, 0.001, 100.0),
-                            DiagramKind::Ph => (0.0, 4000.0, 0.001, 100.0),
-                            DiagramKind::Tv => (0.001, 2.0, 273.15, 1000.0),
-                            DiagramKind::Ts => (0.0, 10.0, 273.15, 1000.0),
-                            DiagramKind::Th => (0.0, 4000.0, 273.15, 1000.0),
-                            DiagramKind::Hs => (0.0, 10.0, 0.0, 4000.0),
-                        };
+                        let (min, max) = default_range(var);
+                        state.custom_limits = (min, max, state.custom_limits.2, state.custom_limits.3);
+                    }
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::SetPlotY(var) => {
+                    state.plot_y = var;
+                    if state.autoscale {
+                        let (min, max) = default_range(var);
+                        state.custom_limits = (state.custom_limits.0, state.custom_limits.1, min, max);
                     }
                     main_ui.plot_tab.redraw_plot(&state);
                 }
@@ -631,8 +770,12 @@ fn main() {
                     state.show_dome = show;
                     main_ui.plot_tab.redraw_plot(&state);
                 }
-                Message::ToggleSwapAxes(swap) => {
-                    state.swap_axes = swap;
+                Message::TogglePlotXLog(enabled) => {
+                    state.plot_x_log = enabled;
+                    main_ui.plot_tab.redraw_plot(&state);
+                }
+                Message::TogglePlotYLog(enabled) => {
+                    state.plot_y_log = enabled;
                     main_ui.plot_tab.redraw_plot(&state);
                 }
                 Message::SetAutoscale(auto) => {
