@@ -3,7 +3,7 @@ name = "if97_calculator_native"
 version = "1.0.0"
 description = "A Tauri App"
 authors = ["you"]
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "app_lib"

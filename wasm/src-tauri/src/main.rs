@@ -6,7 +6,12 @@
 fn main() {
     #[cfg(all(debug_assertions, target_os = "linux"))]
     {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // SAFETY: `set_var` is unsafe (env var mutations can be UB if other threads
+        // concurrently access the environment on some platforms). Здесь вызов
+        // выполняется в начале `main`, до запуска потоков со стороны Tauri.
+        unsafe {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
     }
 
     // Вызов функции run() из lib.rs.
