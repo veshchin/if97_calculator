@@ -43,7 +43,7 @@ cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps --op
 
 Требования:
 
-- Rust toolchain через `rustup`
+- Rust toolchain через `rustup` (рекомендуемая версия зафиксирована в `rust-toolchain.toml`)
 - для Tauri: системные зависимости Tauri и `cargo-tauri`
 - для web frontend: `trunk`
 - для контейнерного режима: Docker

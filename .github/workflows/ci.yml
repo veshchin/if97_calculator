@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.94.1
 
       - name: Install system dependencies
         run: |
@@ -47,4 +47,3 @@ jobs:
 
       - name: Test Tauri backend (smoke)
         run: cargo test -p if97_calculator_native
-
