@@ -9,14 +9,14 @@ mod ui;
 use chrono::Local;
 use fltk::{app, browser::CheckBrowser, button::Button, dialog, prelude::*, window::Window};
 use if97_app_api::{AxisVar, InputMode};
-use if97_core::{errors::If97Error, saturation, If97, Region, WaterState};
+use if97_core::{If97, Region, WaterState, errors::If97Error, saturation};
 use std::fs;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
-use crate::plot::renderer::render_plot_to_file;
+use crate::plot::renderer::{render_plot_to_file, render_plot_to_svg_file};
 use crate::state::{AppState, BatchRow, Message, SavedData, SavedKind};
 use crate::ui::MainUI;
 
@@ -59,7 +59,8 @@ fn parse_value(raw: &str) -> Result<f64, String> {
 }
 
 fn normalize_table_input(input: &str) -> String {
-    input.lines()
+    input
+        .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
@@ -202,11 +203,20 @@ fn format_single_result(state: &WaterState, precision: usize) -> String {
         format!("p = {}", format_value(state.p.inner(), precision, "МПа")),
         format!("T = {}", format_value(state.t.inner(), precision, "К")),
         format!("v = {}", format_value(state.v.inner(), precision, "м3/кг")),
-        format!("rho = {}", format_value(state.rho.inner(), precision, "кг/м3")),
+        format!(
+            "rho = {}",
+            format_value(state.rho.inner(), precision, "кг/м3")
+        ),
         format!("h = {}", format_value(state.h.inner(), precision, "кДж/кг")),
-        format!("s = {}", format_value(state.s.inner(), precision, "кДж/(кг·К)")),
+        format!(
+            "s = {}",
+            format_value(state.s.inner(), precision, "кДж/(кг·К)")
+        ),
         format!("u = {}", format_value(state.u.inner(), precision, "кДж/кг")),
-        format!("cp = {}", format_value(state.cp.inner(), precision, "кДж/(кг·К)")),
+        format!(
+            "cp = {}",
+            format_value(state.cp.inner(), precision, "кДж/(кг·К)")
+        ),
         format!("w = {}", format_value(state.w.inner(), precision, "м/с")),
     ]
     .join("\n")
@@ -218,27 +228,33 @@ fn sync_saved_lists(ui: &mut MainUI, state: &AppState) {
 }
 
 fn saved_point_name(state: &AppState, mode: InputMode, raw_a: &str, raw_b: &str) -> Option<String> {
-    state.datasets.iter().find_map(|dataset| match &dataset.kind {
-        SavedKind::Point { mode: saved_mode, v1, v2 }
-            if *saved_mode == mode && v1 == raw_a && v2 == raw_b =>
-        {
-            Some(dataset.name.clone())
-        }
-        _ => None,
-    })
+    state
+        .datasets
+        .iter()
+        .find_map(|dataset| match &dataset.kind {
+            SavedKind::Point {
+                mode: saved_mode,
+                v1,
+                v2,
+            } if *saved_mode == mode && v1 == raw_a && v2 == raw_b => Some(dataset.name.clone()),
+            _ => None,
+        })
 }
 
 fn saved_table_name(state: &AppState, mode: InputMode, content: &str) -> Option<String> {
     let normalized = normalize_table_input(content);
-    state.datasets.iter().find_map(|dataset| match &dataset.kind {
-        SavedKind::Table {
-            mode: saved_mode,
-            input,
-        } if *saved_mode == mode && normalize_table_input(input) == normalized => {
-            Some(dataset.name.clone())
-        }
-        _ => None,
-    })
+    state
+        .datasets
+        .iter()
+        .find_map(|dataset| match &dataset.kind {
+            SavedKind::Table {
+                mode: saved_mode,
+                input,
+            } if *saved_mode == mode && normalize_table_input(input) == normalized => {
+                Some(dataset.name.clone())
+            }
+            _ => None,
+        })
 }
 
 fn refresh_single_result(
@@ -257,8 +273,10 @@ fn refresh_single_result(
 
     match calculate_state(mode, &raw_a, &raw_b) {
         Ok(result) => {
-            ui.single_tab
-                .update_result(&format_single_result(&result, state.single_precision), false);
+            ui.single_tab.update_result(
+                &format_single_result(&result, state.single_precision),
+                false,
+            );
             state.last_single_result = Some(result);
             state.last_single_request = Some((mode, raw_a.clone(), raw_b.clone()));
             if let Some(name) = saved_point_name(state, mode, &raw_a, &raw_b) {
@@ -274,12 +292,7 @@ fn refresh_single_result(
     }
 }
 
-fn refresh_batch_result(
-    ui: &mut MainUI,
-    state: &mut AppState,
-    mode: InputMode,
-    content: String,
-) {
+fn refresh_batch_result(ui: &mut MainUI, state: &mut AppState, mode: InputMode, content: String) {
     state.current_table_rows = calculate_table_rows(mode, &content);
     state.current_table_dataset_mut().points = state
         .current_table_rows
@@ -287,8 +300,11 @@ fn refresh_batch_result(
         .filter_map(|row| row.state.clone())
         .collect();
 
-    ui.batch_tab
-        .update_table(&state.current_table_rows, state.table_precision, state.table_scientific);
+    ui.batch_tab.update_table(
+        &state.current_table_rows,
+        state.table_precision,
+        state.table_scientific,
+    );
 
     if let Some(name) = saved_table_name(state, mode, &content) {
         ui.batch_tab.set_save_name(&name);
@@ -303,19 +319,20 @@ fn generate_table_block(
     v2_to: &str,
     v2_step: &str,
 ) -> Result<String, String> {
-    let parse_range = |from: &str, to: &str, step: &str| -> Result<(f64, f64, f64, usize), String> {
-        let from = parse_value(from)?;
-        let to = parse_value(to)?;
-        let step = parse_value(step)?;
-        if step == 0.0 {
-            return Err("Шаг генератора не может быть нулевым".to_string());
-        }
-        if (to > from && step < 0.0) || (to < from && step > 0.0) {
-            return Err("Шаг генератора не соответствует направлению диапазона".to_string());
-        }
-        let steps = (((to - from) / step) + 1e-9).abs().floor() as usize;
-        Ok((from, to, step, steps))
-    };
+    let parse_range =
+        |from: &str, to: &str, step: &str| -> Result<(f64, f64, f64, usize), String> {
+            let from = parse_value(from)?;
+            let to = parse_value(to)?;
+            let step = parse_value(step)?;
+            if step == 0.0 {
+                return Err("Шаг генератора не может быть нулевым".to_string());
+            }
+            if (to > from && step < 0.0) || (to < from && step > 0.0) {
+                return Err("Шаг генератора не соответствует направлению диапазона".to_string());
+            }
+            let steps = (((to - from) / step) + 1e-9).abs().floor() as usize;
+            Ok((from, to, step, steps))
+        };
 
     let (from1, _, step1, steps1) = parse_range(v1_from, v1_to, v1_step)?;
     let (from2, _, step2, steps2) = parse_range(v2_from, v2_to, v2_step)?;
@@ -404,7 +421,11 @@ fn write_batch_export(
             return sanitize_cp(raw);
         }
 
-        let x = if x_hint.is_finite() { x_hint } else { quality_x(point) };
+        let x = if x_hint.is_finite() {
+            x_hint
+        } else {
+            quality_x(point)
+        };
         if !x.is_finite() {
             return sanitize_cp(raw);
         }
@@ -552,9 +573,10 @@ fn main() {
                 Message::SetSinglePrecision(precision) => {
                     state.single_precision = precision.min(10);
                     if let Some(result) = &state.last_single_result {
-                        main_ui
-                            .single_tab
-                            .update_result(&format_single_result(result, state.single_precision), false);
+                        main_ui.single_tab.update_result(
+                            &format_single_result(result, state.single_precision),
+                            false,
+                        );
                     }
                 }
                 Message::SaveSinglePoint {
@@ -639,22 +661,28 @@ fn main() {
                                 refresh_batch_result(&mut main_ui, &mut state, mode, content);
                                 main_ui.plot_tab.redraw_plot(&state);
                             }
-                            Err(err) => dialog::alert(150, 200, &format!("Ошибка чтения файла: {err}")),
+                            Err(err) => {
+                                dialog::alert(150, 200, &format!("Ошибка чтения файла: {err}"))
+                            }
                         }
                     }
                 }
                 Message::SetTablePrecision(precision) => {
                     state.table_precision = precision.min(10);
-                    main_ui
-                        .batch_tab
-                        .update_table(&state.current_table_rows, state.table_precision, state.table_scientific);
+                    main_ui.batch_tab.update_table(
+                        &state.current_table_rows,
+                        state.table_precision,
+                        state.table_scientific,
+                    );
                 }
                 Message::SetTableScientific(enabled) => {
                     state.table_scientific = enabled;
                     main_ui.batch_tab.set_scientific(enabled);
-                    main_ui
-                        .batch_tab
-                        .update_table(&state.current_table_rows, state.table_precision, state.table_scientific);
+                    main_ui.batch_tab.update_table(
+                        &state.current_table_rows,
+                        state.table_precision,
+                        state.table_scientific,
+                    );
                 }
                 Message::SaveBatchTable {
                     name,
@@ -730,7 +758,9 @@ fn main() {
                     v2_from,
                     v2_to,
                     v2_step,
-                } => match generate_table_block(&v1_from, &v1_to, &v1_step, &v2_from, &v2_to, &v2_step) {
+                } => match generate_table_block(
+                    &v1_from, &v1_to, &v1_step, &v2_from, &v2_to, &v2_step,
+                ) {
                     Ok(generated) => {
                         let mut content = main_ui.batch_tab.input_area.value();
                         if !content.is_empty() && !content.ends_with('\n') {
@@ -754,7 +784,8 @@ fn main() {
                     state.plot_x = var;
                     if state.autoscale {
                         let (min, max) = default_range(var);
-                        state.custom_limits = (min, max, state.custom_limits.2, state.custom_limits.3);
+                        state.custom_limits =
+                            (min, max, state.custom_limits.2, state.custom_limits.3);
                     }
                     main_ui.plot_tab.redraw_plot(&state);
                 }
@@ -762,7 +793,8 @@ fn main() {
                     state.plot_y = var;
                     if state.autoscale {
                         let (min, max) = default_range(var);
-                        state.custom_limits = (state.custom_limits.0, state.custom_limits.1, min, max);
+                        state.custom_limits =
+                            (state.custom_limits.0, state.custom_limits.1, min, max);
                     }
                     main_ui.plot_tab.redraw_plot(&state);
                 }
@@ -834,10 +866,35 @@ fn main() {
                         app::wait();
                     }
                     if let Some(mut filename) = chooser.value(1) {
-                        if !filename.ends_with(".png") {
+                        if !filename.to_lowercase().ends_with(".png") {
                             filename.push_str(".png");
                         }
                         match render_plot_to_file(&state, &filename, 1920, 1080) {
+                            Ok(_) => dialog::message(150, 200, "График сохранен."),
+                            Err(err) => dialog::alert(150, 200, &format!("Ошибка экспорта: {err}")),
+                        }
+                    }
+                }
+                Message::ExportPlotSvg => {
+                    let default_path = std::env::var("HOME")
+                        .map(|p| format!("{}/Desktop/if97_plot.svg", p))
+                        .unwrap_or_else(|_| "if97_plot.svg".to_string());
+
+                    let mut chooser = dialog::FileChooser::new(
+                        &default_path,
+                        "*.svg",
+                        dialog::FileChooserType::Create,
+                        "Экспорт графика",
+                    );
+                    chooser.show();
+                    while chooser.shown() {
+                        app::wait();
+                    }
+                    if let Some(mut filename) = chooser.value(1) {
+                        if !filename.to_lowercase().ends_with(".svg") {
+                            filename.push_str(".svg");
+                        }
+                        match render_plot_to_svg_file(&state, &filename, 1920, 1080) {
                             Ok(_) => dialog::message(150, 200, "График сохранен."),
                             Err(err) => dialog::alert(150, 200, &format!("Ошибка экспорта: {err}")),
                         }
@@ -865,7 +922,9 @@ fn main() {
                         if let Ok(content) = logs_storage.lock() {
                             match std::fs::write(&filename, content.as_str()) {
                                 Ok(_) => dialog::message(150, 200, "Логи сохранены."),
-                                Err(err) => dialog::alert(150, 200, &format!("Ошибка записи: {err}")),
+                                Err(err) => {
+                                    dialog::alert(150, 200, &format!("Ошибка записи: {err}"))
+                                }
                             }
                         }
                     }
@@ -892,7 +951,10 @@ fn main() {
 
                     if let Some(filename) = chooser.value(1) {
                         let filter = chooser.filter();
-                        let delimiter = if filter.as_ref().map_or(false, |f| f.contains("разделитель ;")) {
+                        let delimiter = if filter
+                            .as_ref()
+                            .map_or(false, |f| f.contains("разделитель ;"))
+                        {
                             b';'
                         } else if filename.ends_with(".txt") {
                             b'\t'

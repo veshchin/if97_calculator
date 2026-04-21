@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use if97_app_api::AxisVar;
-use if97_core::{saturation, Region, WaterState};
+use if97_core::{Region, WaterState, saturation};
 use plotters::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -194,7 +194,12 @@ fn saturation_pressure(t: f64) -> f64 {
     (SAT_P_MIN.ln() + t * (SAT_P_MAX.ln() - SAT_P_MIN.ln())).exp()
 }
 
-fn eval_saturation_point(x_var: AxisVar, y_var: AxisVar, quality: f64, t: f64) -> Option<(f64, f64)> {
+fn eval_saturation_point(
+    x_var: AxisVar,
+    y_var: AxisVar,
+    quality: f64,
+    t: f64,
+) -> Option<(f64, f64)> {
     let pressure = saturation_pressure(t);
     let state = if quality <= 0.0 {
         saturation::saturated_liquid(pressure.into()).ok()?
@@ -400,7 +405,8 @@ fn compute_dome_points(x_var: AxisVar, y_var: AxisVar) -> Arc<Vec<(f64, f64)>> {
     }
 
     // В p-T (и T-p) диаграммах линия насыщения совпадает для x=0 и x=1, поэтому не дублируем путь.
-    if (x_var == AxisVar::T && y_var == AxisVar::P) || (x_var == AxisVar::P && y_var == AxisVar::T) {
+    if (x_var == AxisVar::T && y_var == AxisVar::P) || (x_var == AxisVar::P && y_var == AxisVar::T)
+    {
         return Arc::new(liquid);
     }
 
@@ -524,6 +530,20 @@ pub fn render_plot_to_file(
     height: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = BitMapBackend::new(filename, (width, height)).into_drawing_area();
+    root.fill(&WHITE)?;
+    draw_core(state, &root);
+    root.present()?;
+    Ok(())
+}
+
+/// Рендерит текущую диаграмму в SVG-файл.
+pub fn render_plot_to_svg_file(
+    state: &AppState,
+    filename: &str,
+    width: u32,
+    height: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = SVGBackend::new(filename, (width, height)).into_drawing_area();
     root.fill(&WHITE)?;
     draw_core(state, &root);
     root.present()?;

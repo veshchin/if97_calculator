@@ -155,17 +155,25 @@ impl AppState {
 
     /// Удаляет сохраненную точку по индексу среди точек.
     pub fn remove_saved_point(&mut self, index: usize) {
-        if let Some(target_name) = self.saved_point_at(index).map(|dataset| dataset.name.clone()) {
-            self.datasets
-                .retain(|dataset| !matches!(dataset.kind, SavedKind::Point { .. }) || dataset.name != target_name);
+        if let Some(target_name) = self
+            .saved_point_at(index)
+            .map(|dataset| dataset.name.clone())
+        {
+            self.datasets.retain(|dataset| {
+                !matches!(dataset.kind, SavedKind::Point { .. }) || dataset.name != target_name
+            });
         }
     }
 
     /// Удаляет сохраненную таблицу по индексу среди таблиц.
     pub fn remove_saved_table(&mut self, index: usize) {
-        if let Some(target_name) = self.saved_table_at(index).map(|dataset| dataset.name.clone()) {
-            self.datasets
-                .retain(|dataset| !matches!(dataset.kind, SavedKind::Table { .. }) || dataset.name != target_name);
+        if let Some(target_name) = self
+            .saved_table_at(index)
+            .map(|dataset| dataset.name.clone())
+        {
+            self.datasets.retain(|dataset| {
+                !matches!(dataset.kind, SavedKind::Table { .. }) || dataset.name != target_name
+            });
         }
     }
 }
@@ -262,6 +270,8 @@ pub enum Message {
     UpdateDataVisibility(Vec<bool>),
     /// Экспортировать график в PNG.
     ExportPlot,
+    /// Экспортировать график в SVG.
+    ExportPlotSvg,
 
     /// Экспортировать журнал работы приложения в файл.
     SaveLogFile,

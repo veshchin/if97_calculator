@@ -4,14 +4,7 @@ use crate::plot::renderer::render_plot_to_buffer;
 use crate::state::{AppState, Message};
 use fltk::app::Sender;
 use fltk::{
-    button::*,
-    enums::*,
-    frame::*,
-    group::*,
-    image::RgbImage,
-    input::*,
-    menu::Choice,
-    prelude::*,
+    button::*, enums::*, frame::*, group::*, image::RgbImage, input::*, menu::Choice, prelude::*,
 };
 use if97_app_api::AxisVar;
 
@@ -86,12 +79,6 @@ impl PlotTab {
         let mut check_y_log = CheckButton::new(610, 45, 80, 30, "log Y");
         check_y_log.set_value(false);
 
-        let mut btn_select_data = Button::new(700, 45, 140, 30, "Выбрать данные");
-
-        let mut btn_export_plot = Button::new(850, 45, 170, 30, "Экспорт в PNG");
-        btn_export_plot.set_color(Color::from_rgb(100, 149, 237));
-        btn_export_plot.set_label_color(Color::White);
-
         let mut check_autoscale = CheckButton::new(20, 85, 120, 30, "Автомасштаб");
         check_autoscale.set_value(true);
 
@@ -116,6 +103,16 @@ impl PlotTab {
 
         let mut btn_apply_limits = Button::new(20, 125, 150, 30, "Применить масштаб");
         btn_apply_limits.deactivate();
+
+        let mut btn_select_data = Button::new(180, 125, 160, 30, "Выбрать данные");
+
+        let mut btn_export_plot = Button::new(350, 125, 160, 30, "Экспорт PNG");
+        btn_export_plot.set_color(Color::from_rgb(100, 149, 237));
+        btn_export_plot.set_label_color(Color::White);
+
+        let mut btn_export_plot_svg = Button::new(520, 125, 160, 30, "Экспорт SVG");
+        btn_export_plot_svg.set_color(Color::from_rgb(46, 139, 87));
+        btn_export_plot_svg.set_label_color(Color::White);
 
         let mut plot_frame = Frame::new(20, 165, 1000, 480, "");
         plot_frame.set_color(Color::White);
@@ -206,6 +203,10 @@ impl PlotTab {
             let s = sender.clone();
             move |_| s.send(Message::ExportPlot)
         });
+        btn_export_plot_svg.set_callback({
+            let s = sender.clone();
+            move |_| s.send(Message::ExportPlotSvg)
+        });
 
         Self {
             group,
@@ -235,10 +236,14 @@ impl PlotTab {
         self.axis_y_label
             .set_label(&format!("Y: {}", axis_label_ru(state.plot_y)));
 
-        self.inp_x_min.set_value(&format!("{:.6}", state.custom_limits.0));
-        self.inp_x_max.set_value(&format!("{:.6}", state.custom_limits.1));
-        self.inp_y_min.set_value(&format!("{:.6}", state.custom_limits.2));
-        self.inp_y_max.set_value(&format!("{:.6}", state.custom_limits.3));
+        self.inp_x_min
+            .set_value(&format!("{:.6}", state.custom_limits.0));
+        self.inp_x_max
+            .set_value(&format!("{:.6}", state.custom_limits.1));
+        self.inp_y_min
+            .set_value(&format!("{:.6}", state.custom_limits.2));
+        self.inp_y_max
+            .set_value(&format!("{:.6}", state.custom_limits.3));
     }
 
     /// Перерисовывает график в `plot_frame` на основании `state`.

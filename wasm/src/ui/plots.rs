@@ -1,14 +1,14 @@
 //! Вкладка построения диаграмм (canvas).
 
-use crate::plot::{draw_diagram, project_state, ChartOptions, PlotSeries};
+use crate::plot::{ChartOptions, PlotSeries, draw_diagram, project_state, render_diagram_to_svg};
 use crate::tauri_api;
 use crate::types::{AppContext, SavedItem, StateContext};
 use gloo_timers::callback::Timeout;
 use if97_app_api::{AxisVar, DomeRequest, PlotPoint};
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
-use wasm_bindgen::{closure::Closure, JsCast};
+use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{
     HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElement, MouseEvent, WheelEvent,
 };
@@ -179,10 +179,8 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                     *pending_for_cb.borrow_mut() = Some(timeout);
                 }));
 
-                let _ = window.add_event_listener_with_callback(
-                    "resize",
-                    closure.as_ref().unchecked_ref(),
-                );
+                let _ = window
+                    .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref());
 
                 cleanup = Some((window, closure, pending));
             }
@@ -204,12 +202,15 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
     let series_list = use_memo(
         (app_ctx.clone(), x_var, y_var, selected_ids.clone()),
         |(saved, x_var, y_var, selected_ids)| {
-            saved.items
+            saved
+                .items
                 .iter()
                 .filter(|item| selected_ids.contains(&item.id()))
                 .map(|item| {
                     let points = match item {
-                        SavedItem::Point(point) => vec![project_state(*x_var, *y_var, &point.state)],
+                        SavedItem::Point(point) => {
+                            vec![project_state(*x_var, *y_var, &point.state)]
+                        }
                         SavedItem::Table(table) => table
                             .states
                             .iter()
@@ -256,12 +257,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
                     let x_var = *x_var;
                     let y_var = *y_var;
                     wasm_bindgen_futures::spawn_local(async move {
-                        match tauri_api::calculate_dome(DomeRequest {
-                            x_var,
-                            y_var,
-                        })
-                        .await
-                        {
+                        match tauri_api::calculate_dome(DomeRequest { x_var, y_var }).await {
                             Ok(points) => {
                                 let points = Rc::new(points);
                                 dome_cache
@@ -313,40 +309,43 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
             )| {
                 if *is_active {
                     if let Some(canvas) = canvas_ref.cast::<HtmlCanvasElement>() {
-                    // Подгоняем внутренний буфер canvas под текущий размер элемента, чтобы:
-                    // 1) не было искажений/letterbox при CSS-скейле,
-                    // 2) график оставался резким на Retina.
-                    let css_w = canvas.client_width() as f64;
-                    let css_h = canvas.client_height() as f64;
-                    if css_w > 0.0 && css_h > 0.0 {
-                        let dpr = web_sys::window()
-                            .map(|w| w.device_pixel_ratio())
-                            .unwrap_or(1.0)
-                            .max(1.0)
-                            .min(2.0);
-                        let next_w = (css_w * dpr).round() as u32;
-                        let next_h = (css_h * dpr).round() as u32;
-                        if canvas.width() != next_w {
-                            canvas.set_width(next_w);
+                        // Подгоняем внутренний буфер canvas под текущий размер элемента, чтобы:
+                        // 1) не было искажений/letterbox при CSS-скейле,
+                        // 2) график оставался резким на Retina.
+                        let css_w = canvas.client_width() as f64;
+                        let css_h = canvas.client_height() as f64;
+                        if css_w > 0.0 && css_h > 0.0 {
+                            let dpr = web_sys::window()
+                                .map(|w| w.device_pixel_ratio())
+                                .unwrap_or(1.0)
+                                .max(1.0)
+                                .min(2.0);
+                            let next_w = (css_w * dpr).round() as u32;
+                            let next_h = (css_h * dpr).round() as u32;
+                            if canvas.width() != next_w {
+                                canvas.set_width(next_w);
+                            }
+                            if canvas.height() != next_h {
+                                canvas.set_height(next_h);
+                            }
                         }
-                        if canvas.height() != next_h {
-                            canvas.set_height(next_h);
-                        }
-                    }
 
-                    let opts = ChartOptions {
-                        show_dome: *show_dome,
-                        x_range: ranges.get(*x_var),
-                        y_range: ranges.get(*y_var),
-                        x_log: *x_log,
-                        y_log: *y_log,
-                    };
-                    let dome_points = dome_points.borrow();
-                    if let Err(error) =
-                        draw_diagram(&canvas, &opts, dome_points.as_slice(), series_list.as_ref())
-                    {
-                        tracing::error!("ошибка отрисовки графика: {error}");
-                    }
+                        let opts = ChartOptions {
+                            show_dome: *show_dome,
+                            x_range: ranges.get(*x_var),
+                            y_range: ranges.get(*y_var),
+                            x_log: *x_log,
+                            y_log: *y_log,
+                        };
+                        let dome_points = dome_points.borrow();
+                        if let Err(error) = draw_diagram(
+                            &canvas,
+                            &opts,
+                            dome_points.as_slice(),
+                            series_list.as_ref(),
+                        ) {
+                            tracing::error!("ошибка отрисовки графика: {error}");
+                        }
                     }
                 }
 
@@ -705,16 +704,53 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         })
     };
 
-    let axis_controls = |
-        axis: &'static str,
-        var: AxisVar,
-        is_log: bool,
-        range: (f64, f64),
-        on_axis_change: Callback<Event>,
-        on_toggle_log: Callback<MouseEvent>,
-        on_min_change: Callback<Event>,
-        on_max_change: Callback<Event>,
-    | {
+    let on_save_svg = {
+        let show_dome = show_dome.clone();
+        let ranges = ranges.clone();
+        let x_log = x_log.clone();
+        let y_log = y_log.clone();
+        let dome_points = dome_points.clone();
+        let series_list = series_list.clone();
+        Callback::from(move |_| {
+            let opts = ChartOptions {
+                show_dome: *show_dome,
+                x_range: ranges.get(x_var),
+                y_range: ranges.get(y_var),
+                x_log: *x_log,
+                y_log: *y_log,
+            };
+            let dome_points = dome_points.borrow();
+            match render_diagram_to_svg(
+                &opts,
+                dome_points.as_slice(),
+                series_list.as_ref(),
+                1920,
+                1080,
+            ) {
+                Ok(svg) => {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let _ = tauri_api::save_file_dialog(tauri_api::SaveFileArgs {
+                            content: svg,
+                            default_name: Some("if97_plot.svg".to_string()),
+                            filter_name: Some("SVG".to_string()),
+                            filter_ext: Some("svg".to_string()),
+                        })
+                        .await;
+                    });
+                }
+                Err(error) => tracing::error!("ошибка генерации SVG: {error}"),
+            }
+        })
+    };
+
+    let axis_controls = |axis: &'static str,
+                         var: AxisVar,
+                         is_log: bool,
+                         range: (f64, f64),
+                         on_axis_change: Callback<Event>,
+                         on_toggle_log: Callback<MouseEvent>,
+                         on_min_change: Callback<Event>,
+                         on_max_change: Callback<Event>| {
         html! {
             <div style="display: flex; align-items: center; gap: 8px; background: var(--hover-bg); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);">
                 <span style="font-weight: 700; font-size: 0.85rem; width: 14px;">{ axis }</span>
@@ -739,7 +775,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
         }
     };
 
-            html! {
+    html! {
         <div class="charts-container fade-in" style="display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; position: relative;">
             <div class="top-toolbar" style="display: flex; flex-wrap: wrap; gap: 15px; padding: 10px 15px; background: var(--card-bg); border-bottom: 1px solid var(--border); align-items: center; flex-shrink: 0; z-index: 5;">
                 { axis_controls(
@@ -770,6 +806,7 @@ pub fn plots_tab(props: &PlotsProps) -> Html {
 
                 <button class="btn btn-outline btn-sm" onclick={on_reset_scales} title="Сбросить диапазоны графика">{"Сброс"}</button>
                 <button class="btn btn-success btn-sm" onclick={on_save_png}>{"Сохранить PNG"}</button>
+                <button class="btn btn-success btn-sm" onclick={on_save_svg}>{"Сохранить SVG"}</button>
             </div>
 
             <div style="flex-grow: 1; position: relative; overflow: hidden; background: var(--bg-color);">

@@ -3,12 +3,12 @@
 //! Крейт предоставляет набор `#[tauri::command]` для UI-frontend (Yew) и запускает
 //! приложение через `tauri::Builder`.
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use if97_app_api::{
     AxisVar, DomeRequest, InputMode, LogEntryDto, PlotPoint, SingleCalcRequest, StateDto,
     TableCalcRequest, TableRowResult,
 };
-use if97_core::{errors::If97Error, saturation, If97, Region, WaterState};
+use if97_core::{If97, Region, WaterState, errors::If97Error, saturation};
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 use std::fs;
@@ -164,7 +164,11 @@ fn cp_value_for_dto(state: &WaterState, x_hint: f64) -> f64 {
         return cap_non_finite(raw);
     }
 
-    let x = if x_hint.is_finite() { x_hint } else { quality_x_from_state(state) };
+    let x = if x_hint.is_finite() {
+        x_hint
+    } else {
+        quality_x_from_state(state)
+    };
     if !x.is_finite() {
         return cap_non_finite(raw);
     }
@@ -651,15 +655,24 @@ async fn save_file_dialog(
         dialog = dialog.set_file_name(name);
     }
 
-    if let (Some(name), Some(ext)) = (filter_name, filter_ext) {
-        dialog = dialog.add_filter(name, &[ext.as_str()]);
+    if let (Some(name), Some(ext)) = (filter_name.as_deref(), filter_ext.as_deref()) {
+        dialog = dialog.add_filter(name, &[ext]);
     }
 
     match dialog.blocking_save_file() {
         Some(path) => {
-            let path = path
+            let mut path = path
                 .into_path()
                 .map_err(|_| "Некорректный путь файла".to_string())?;
+            let ext_is_missing = match path.extension().and_then(|ext| ext.to_str()) {
+                None => true,
+                Some(ext) => ext.trim().is_empty(),
+            };
+            if ext_is_missing {
+                if let Some(ext) = filter_ext.as_deref().filter(|ext| !ext.trim().is_empty()) {
+                    path.set_extension(ext.trim());
+                }
+            }
             fs::write(path, content).map_err(|error| error.to_string())
         }
         None => Err("Отменено".into()),
@@ -676,9 +689,16 @@ async fn save_plot_dialog(app: tauri::AppHandle, b64: String) -> Result<(), Stri
         .blocking_save_file()
     {
         Some(path) => {
-            let path = path
+            let mut path = path
                 .into_path()
                 .map_err(|_| "Некорректный путь файла".to_string())?;
+            let ext_is_missing = match path.extension().and_then(|ext| ext.to_str()) {
+                None => true,
+                Some(ext) => ext.trim().is_empty(),
+            };
+            if ext_is_missing {
+                path.set_extension("png");
+            }
             let image_bytes = STANDARD.decode(&b64).map_err(|error| error.to_string())?;
             fs::write(path, image_bytes).map_err(|error| error.to_string())
         }
