@@ -39,7 +39,7 @@ jobs:
       - name: Install Trunk
         uses: jetli/trunk-action@v0.5.0
         with:
-          version: 0.21.14
+          version: v0.21.14
 
       - name: Cache cargo build outputs
         uses: swatinem/rust-cache@v2
@@ -93,7 +93,7 @@ jobs:
       - name: Install Trunk
         uses: jetli/trunk-action@v0.5.0
         with:
-          version: 0.21.14
+          version: v0.21.14
 
       - name: Cache cargo build outputs
         uses: swatinem/rust-cache@v2
@@ -156,7 +156,7 @@ jobs:
       - name: Install Trunk
         uses: jetli/trunk-action@v0.5.0
         with:
-          version: 0.21.14
+          version: v0.21.14
 
       - name: Cache cargo build outputs
         uses: swatinem/rust-cache@v2
@@ -167,6 +167,8 @@ jobs:
         run: cargo doc -p if97_core -p if97_app_api -p if97_calculator_service --no-deps
 
       - name: Build web (WASM/Yew)
+        env:
+          NO_COLOR: true
         run: |
           cd wasm
           trunk build --release
