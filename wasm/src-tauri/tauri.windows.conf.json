@@ -1,4 +1,5 @@
 {
+  "productName": "IF97 Calculator",
   "build": {
     "beforeBuildCommand": "trunk build --release",
     "beforeDevCommand": "trunk serve --release"
