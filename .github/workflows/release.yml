@@ -109,11 +109,18 @@ jobs:
           mkdir -p artifacts
           cp target/release/if97_calculator_fltk${{ matrix.fltk_ext }} artifacts/if97_calculator_fltk-${{ matrix.platform }}${{ matrix.fltk_ext }}
 
-      # WiX light.exe requires the Windows VBScript optional feature for MSI bundling.
+      # WiX light.exe requires the Windows VBScript capability for MSI bundling.
       - name: Enable VBScript for WiX
         if: matrix.platform == 'windows'
         shell: powershell
-        run: Enable-WindowsOptionalFeature -Online -FeatureName VBScript -All -NoRestart
+        run: |
+          $vbscript = Get-WindowsCapability -Online | Where-Object { $_.Name -like 'VBScript*' } | Select-Object -First 1
+          if (-not $vbscript) {
+            throw 'VBScript capability was not found on this runner.'
+          }
+          if ($vbscript.State -ne 'Installed') {
+            Add-WindowsCapability -Online -Name $vbscript.Name
+          }
 
       - name: Build and publish Tauri application
         uses: tauri-apps/tauri-action@v0
