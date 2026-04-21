@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeBuildCommand": "powershell -NoProfile -Command \"$env:NO_COLOR='true'; trunk build --release\"",
-    "beforeDevCommand": "powershell -NoProfile -Command \"$env:NO_COLOR='true'; trunk serve --release\""
+    "beforeBuildCommand": "trunk build --release",
+    "beforeDevCommand": "trunk serve --release"
   }
 }
