@@ -25,7 +25,7 @@ impl AboutTab {
         title.set_label_size(24);
 
         let mut about_text = Frame::default().with_size(0, 100).with_label(
-            "Версия 1.0.0\n\
+            "Версия 1.1.0\n\
              Кроссплатформенный калькулятор свойств воды и пара по IAPWS-IF97.\n\
              Ядро, desktop UI, Tauri UI и service-обертка используют общую вычислительную модель.",
         );

@@ -110,13 +110,13 @@ API описан в `service/proto/if97.proto`:
 Сборка контейнера:
 
 ```bash
-docker build -t if97-calculator-service:1.0.0 -f service/Dockerfile .
+docker build -t if97-calculator-service:1.1.0 -f service/Dockerfile .
 ```
 
 Запуск контейнера:
 
 ```bash
-docker run --rm -p 50051:50051 if97-calculator-service:1.0.0
+docker run --rm -p 50051:50051 if97-calculator-service:1.1.0
 ```
 
 Kubernetes-манифесты лежат в `service/k8s/` и включают:
@@ -148,4 +148,4 @@ kubectl apply -f service/k8s/
 
 Релизный workflow находится в `.github/workflows/release.yml`.
 
-Он проверяет workspace, собирает Tauri-приложение, FLTK-бинарники и публикует артефакты по тегу формата `vMAJOR.MINOR.PATCH` (например, `v1.0.0`).
+Он проверяет workspace, собирает Tauri-приложение, FLTK-бинарники и публикует артефакты по тегу формата `vMAJOR.MINOR.PATCH` (например, `v1.1.0`).

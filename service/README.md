@@ -48,14 +48,14 @@ cargo test -p if97_calculator_service
 ## Docker
 
 ```bash
-docker build -t if97-calculator-service:1.0.0 -f service/Dockerfile .
-docker run --rm -p 50051:50051 if97-calculator-service:1.0.0
+docker build -t if97-calculator-service:1.1.0 -f service/Dockerfile .
+docker run --rm -p 50051:50051 if97-calculator-service:1.1.0
 ```
 
 Нагрузочный gRPC-тест внутри контейнера:
 
 ```bash
-docker run --rm --entrypoint /usr/local/bin/grpc_loadtest if97-calculator-service:1.0.0 -- --addr 127.0.0.1:50051 --streams 1 --batches 2000 --batch-size 2048 --in-flight 8
+docker run --rm --entrypoint /usr/local/bin/grpc_loadtest if97-calculator-service:1.1.0 -- --addr 127.0.0.1:50051 --streams 1 --batches 2000 --batch-size 2048 --in-flight 8
 ```
 
 ## Kubernetes

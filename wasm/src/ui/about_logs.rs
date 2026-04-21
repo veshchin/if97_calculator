@@ -79,7 +79,7 @@ pub fn about_logs_tab() -> Html {
                 <div class="card about-card">
                     <h3>{"О приложении"}</h3>
                     <p><strong>{"Калькулятор IF97"}</strong></p>
-                    <p>{"Версия: 1.0.0 (редакция Tauri)"}</p>
+                    <p>{"Версия: 1.1.0 (редакция Tauri)"}</p>
                     <p>{"Кроссплатформенный настольный калькулятор свойств воды и пара по IF97."}</p>
                 </div>
                 <div class="card author-card">

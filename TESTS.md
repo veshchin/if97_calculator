@@ -109,7 +109,7 @@ cargo test -p if97_app_api --frozen --color never -- --nocapture
    Compiling memchr v2.8.0
    Compiling syn v2.0.117
    Compiling serde_derive v1.0.228
-   Compiling if97_app_api v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
+   Compiling if97_app_api v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 7.02s
      Running unittests src/lib.rs (target/debug/deps/if97_app_api-c4a7e495d2559c9b)
 
@@ -149,7 +149,7 @@ cargo test -p if97_core --frozen --color never -- --nocapture
    Compiling quote v1.0.45
    Compiling serde_core v1.0.228
    Compiling once_cell v1.21.4
-   Compiling if97_core v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
+   Compiling if97_core v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
    Compiling memchr v2.8.0
    Compiling pin-project-lite v0.2.17
    Compiling ryu v1.0.23
@@ -320,10 +320,10 @@ cargo test -p if97_calculator_service --frozen --color never -- --nocapture
    Compiling axum v0.7.9
    Compiling thread_local v1.1.9
    Compiling nu-ansi-term v0.50.3
-   Compiling if97_core v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
+   Compiling if97_core v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
    Compiling num_cpus v1.17.0
    Compiling rayon v1.11.0
-   Compiling if97_calculator_service v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/service)
+   Compiling if97_calculator_service v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/service)
    Compiling tokio-util v0.7.18
    Compiling tokio-stream v0.1.18
    Compiling h2 v0.4.13
@@ -467,8 +467,8 @@ cargo test -p if97_calculator_fltk --frozen --color never -- --nocapture
    Compiling potential_utf v0.1.4
    Compiling icu_collections v2.1.1
    Compiling icu_locale_core v2.1.1
-   Compiling if97_core v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
-   Compiling if97_app_api v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
+   Compiling if97_core v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
+   Compiling if97_app_api v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
    Compiling icu_provider v2.1.1
    Compiling icu_properties v2.1.2
    Compiling icu_normalizer v2.1.1
@@ -476,7 +476,7 @@ cargo test -p if97_calculator_fltk --frozen --color never -- --nocapture
    Compiling idna v1.1.0
    Compiling url v2.5.8
    Compiling webbrowser v1.2.0
-   Compiling if97_calculator_fltk v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/fltk)
+   Compiling if97_calculator_fltk v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/fltk)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 16.16s
      Running unittests src/lib.rs (target/debug/deps/if97_calculator_fltk-f160a1cc8dcc6044)
 
@@ -713,12 +713,12 @@ cargo test -p if97_calculator_native --frozen --color never -- --nocapture
    Compiling open v5.3.3
    Compiling shared_child v1.1.1
    Compiling encoding_rs v0.8.35
-   Compiling if97_app_api v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
+   Compiling if97_app_api v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
    Compiling tracing v0.1.44
    Compiling tauri-build v2.5.6
    Compiling tauri-plugin v2.5.4
    Compiling tauri-codegen v2.5.5
-   Compiling if97_core v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
+   Compiling if97_core v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
    Compiling objc2-web-kit v0.3.2
    Compiling tao v0.34.8
    Compiling window-vibrancy v0.6.0
@@ -728,7 +728,7 @@ cargo test -p if97_calculator_native --frozen --color never -- --nocapture
    Compiling tauri-macros v2.5.5
    Compiling tauri-plugin-shell v2.3.5
    Compiling tauri-plugin-dialog v2.6.0
-   Compiling if97_calculator_native v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/wasm/src-tauri)
+   Compiling if97_calculator_native v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/wasm/src-tauri)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 54.68s
      Running unittests src/lib.rs (target/debug/deps/app_lib-dc9121f493ab9578)
 
@@ -847,7 +847,7 @@ cargo check -p if97_calculator_web --target wasm32-unknown-unknown --frozen --co
     Checking pinned v0.1.0
     Checking serde_urlencoded v0.7.1
     Checking bincode v1.3.3
-    Checking if97_app_api v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
+    Checking if97_app_api v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
     Checking web-sys v0.3.92
     Checking wasm-bindgen-futures v0.4.65
     Checking serde-wasm-bindgen v0.5.0
@@ -882,7 +882,7 @@ cargo check -p if97_calculator_web --target wasm32-unknown-unknown --frozen --co
     Checking gloo v0.8.1
     Checking prokio v0.1.0
     Checking yew v0.21.0
-    Checking if97_calculator_web v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/wasm)
+    Checking if97_calculator_web v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/wasm)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 09s
 ```
 
@@ -977,7 +977,7 @@ cd wasm && NO_COLOR=true trunk build --release
    Compiling wasm-bindgen-macro v0.2.115
    Compiling bincode v1.3.3
    Compiling serde_urlencoded v0.7.1
-   Compiling if97_app_api v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
+   Compiling if97_app_api v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/if97_app_api)
    Compiling futures v0.3.32
    Compiling pinned v0.1.0
    Compiling js-sys v0.3.92
@@ -1016,7 +1016,7 @@ cd wasm && NO_COLOR=true trunk build --release
    Compiling prokio v0.1.0
    Compiling gloo v0.10.0
    Compiling yew v0.21.0
-   Compiling if97_calculator_web v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/wasm)
+   Compiling if97_calculator_web v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/wasm)
     Finished `release` profile [optimized] target(s) in 1m 07s
 2026-04-09T10:49:59.199292Z  INFO applying new distribution
 2026-04-09T10:49:59.201148Z  INFO ✅ success
@@ -1065,11 +1065,11 @@ cargo build -p if97_calculator_service --bin if97_loadtest --features loadtest -
 Вывод:
 ```text
    Compiling serde v1.0.228
-   Compiling if97_calculator_service v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/service)
+   Compiling if97_calculator_service v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/service)
    Compiling csv-core v0.1.13
    Compiling csv v1.4.0
    Compiling axum v0.7.9
-   Compiling if97_core v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
+   Compiling if97_core v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/core)
    Compiling tonic v0.12.3
    Compiling tonic-health v0.12.3
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.32s
@@ -1113,7 +1113,7 @@ cargo test -p if97_calculator_native --frozen --color never -- --ignored --nocap
 
 Вывод:
 ```text
-   Compiling if97_calculator_native v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/wasm/src-tauri)
+   Compiling if97_calculator_native v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/wasm/src-tauri)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 5.00s
      Running unittests src/lib.rs (target/debug/deps/app_lib-dc9121f493ab9578)
 
@@ -1166,7 +1166,7 @@ cargo build -p if97_calculator_service --bin if97_calculator_service --bin grpc_
 
 Вывод:
 ```text
-   Compiling if97_calculator_service v1.0.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/service)
+   Compiling if97_calculator_service v1.1.0 (/private/tmp/if97_calculator_tests.33J7CY/repo/service)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.76s
 ```
 
@@ -1424,17 +1424,17 @@ Drain:
 
 Сборка:
 ```bash
-docker build -t if97-calculator-service:1.0.0 -f service/Dockerfile .
+docker build -t if97-calculator-service:1.1.0 -f service/Dockerfile .
 ```
 
 Запуск:
 ```bash
-docker run --rm -p 50051:50051 if97-calculator-service:1.0.0
+docker run --rm -p 50051:50051 if97-calculator-service:1.1.0
 ```
 
 Нагрузочный тест внутри контейнера (как в `service/README.md`):
 ```bash
-docker run --rm --entrypoint /usr/local/bin/grpc_loadtest if97-calculator-service:1.0.0 -- --addr 127.0.0.1:50051 --streams 1 --batches 2000 --batch-size 2048 --in-flight 8
+docker run --rm --entrypoint /usr/local/bin/grpc_loadtest if97-calculator-service:1.1.0 -- --addr 127.0.0.1:50051 --streams 1 --batches 2000 --batch-size 2048 --in-flight 8
 ```
 
 ### Kubernetes
